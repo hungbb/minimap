@@ -124,8 +124,8 @@ const SUNSET = new THREE.Vector3(70, 18, 30);
 const MOON = new THREE.Vector3(40, 90, 30);
 const LIGHT = {
   sun: '#fff4dc', warmSun: '#ffb27a', moon: '#a9b8ff',
-  sky: '#ffffff', nightSky: '#5b67b8',
-  ground: '#cfc2ff', nightGround: '#2e2b5e',
+  sky: '#ffffff', nightSky: '#6d7ad0',
+  ground: '#cfc2ff', nightGround: '#3d3a78',
   glass: '#8fddf5', nightGlass: '#2c3770',
 };
 
@@ -257,6 +257,28 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
 
   const toWorld = (x: number, y: number): Point => ({ x: x - center.x, z: y - center.z });
 
+  // ---- Lights that come on after dark ------------------------------------
+  // Office and lobby ceiling lights, the light at home and the street lamps all light
+  // what's around them at night, like the lit rooms and lamp glow in the 2D map.
+  // They're switched off in the daytime, so they cost nothing then.
+  let nightLights: { light: THREE.PointLight; strength: number }[] = [];
+  let lampLevel = 0;
+
+  function addNightLight(parent: THREE.Group, x: number, y: number, z: number, { color = 0xffd9a0, strength, distance }: { color?: number; strength: number; distance: number }) {
+    // No decay, just a soft edge at `distance`, so the strengths sit beside the sun and sky's.
+    const light = new THREE.PointLight(color, 0, distance, 0);
+    light.position.set(x, y, z);
+    parent.add(light);
+    nightLights.push({ light, strength });
+  }
+
+  function applyNightLights() {
+    for (const { light, strength } of nightLights) {
+      light.intensity = strength * lampLevel;
+      light.visible = lampLevel > 0.01;
+    }
+  }
+
   // ---- Building the rooms -----------------------------------------------
 
   function addPlant(parent: THREE.Group, x: number, z: number) {
@@ -293,6 +315,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     }
     addPlant(group, c.x + z.w / 2 - 2.2, c.z - z.h / 2 + 2.4);
     addPlant(group, c.x - z.w / 2 + 2.4, c.z + z.h / 2 - 2.4);
+    addNightLight(group, c.x, WALL_H + 4, c.z - z.h * 0.1, { strength: 2.6, distance: Math.max(z.w, z.h) * 0.72 });
   }
 
   function addWfh(group: THREE.Group, z: Zone, c: Point) {
@@ -307,6 +330,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     group.add(mesh(new THREE.BoxGeometry(1.8, 3, 0.2), 0xb7a6ff, { x: hx, y: 2.5, z: hz + 3.55, shadow: false }));
     // Lights up at night like the office windows.
     group.add(mesh(new THREE.BoxGeometry(1.6, 1.4, 0.2), windowGlass, { x: hx + 2.4, y: 3.6, z: hz + 3.55, shadow: false }));
+    addNightLight(group, hx, 4.5, hz + 6, { strength: 1.6, distance: 13 });
     addTree(group, c.x - z.w / 2 + 3, c.z + z.h / 2 - 3);
   }
 
@@ -326,6 +350,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
   function addLobby(group: THREE.Group, z: Zone, c: Point) {
     group.add(mesh(new THREE.BoxGeometry(z.w, 1, z.h), 0xffe0ec, { ...c, y: 0.5, shadow: false }));
     group.add(mesh(new THREE.BoxGeometry(9, 0.2, 3.6), 0xffe27a, { x: c.x + z.w / 2 - 7, y: 1.1, z: c.z + z.h / 2 - 3, shadow: false }));
+    addNightLight(group, c.x, 7, c.z, { strength: 1.8, distance: Math.max(z.w, z.h) * 0.75 });
   }
 
   function addLampPost(group: THREE.Group, x: number, z: number) {
@@ -336,6 +361,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     glow.position.set(x, 7.2, z);
     glow.scale.setScalar(6);
     group.add(glow);
+    addNightLight(group, x, 6.6, z + 0.6, { color: 0xffd27a, strength: 2.8, distance: 17 });
   }
 
   function addCar(group: THREE.Group, x: number, z: number) {
@@ -384,6 +410,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
 
   function buildWorld() {
     disposeGroup(world);
+    nightLights = [];
     zoneLabels.clear();
     scenery = [];
     center = { x: layout.width / 2, z: layout.height / 2 };
@@ -427,6 +454,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     }
 
     buildPresets();
+    applyNightLights();
   }
 
   function buildDesks() {
@@ -932,10 +960,10 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     setAmbience({ daylight, warmth, phase, lamps }) {
       sky.color.set(mixColor(LIGHT.nightSky, LIGHT.sky, daylight));
       sky.groundColor.set(mixColor(LIGHT.nightGround, LIGHT.ground, daylight));
-      sky.intensity = 1.1 + 0.8 * daylight;
+      sky.intensity = 1.4 + 0.5 * daylight;
 
       sun.color.set(mixColor(LIGHT.moon, mixColor(LIGHT.sun, LIGHT.warmSun, warmth), daylight));
-      sun.intensity = 0.5 + 0.85 * daylight;
+      sun.intensity = 0.65 + 0.7 * daylight;
       // Low on the rising or setting side, swinging up to midday as it gets light.
       const low = phase === 'dusk' ? SUNSET : SUNRISE;
       const daySun = low.clone().lerp(NOON, daylight);
@@ -947,6 +975,8 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
       lampBulb.emissive.set(0xffe27a);
       lampBulb.emissiveIntensity = lamps * 0.8;
       lampGlow.opacity = lamps * 0.85;
+      lampLevel = lamps;
+      applyNightLights();
     },
 
     setWandering(on) {
