@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { TeamState, TeamUser } from '../../shared/types.ts';
+import { mixColor, type Ambience } from '../lib/ambience.ts';
 import { BODY_RADIUS } from '../lib/drawing.ts';
 import { computeLayout, standingArea, type MapLayout, type Zone, type ZoneKind } from '../lib/layout.ts';
 import { box, clampTo, contains, grow, pickSpot, steer, type Box } from '../lib/wander.ts';
@@ -39,6 +40,8 @@ export interface Scene3D {
   focus(username: string): void;
   /** Lets people wander around their room, or sends everyone back to their spot. */
   setWandering(on: boolean): void;
+  /** Lights the town for the time of day: sun and sky, moonlight, lamps and windows. */
+  setAmbience(look: Ambience): void;
   destroy(): void;
 }
 
@@ -110,6 +113,34 @@ interface Point {
 }
 
 const FRAME_MS = 1000 / 30; // 30 fps is plenty, and kinder to an always-on TV.
+
+// ---- Daylight ----------------------------------------------------------------
+// In the daytime the town is lit exactly as it always has been. Around sunrise the
+// sun comes up low on one side, around sunset it goes down on the other, and at night
+// a cool moon lights the town while lamps and windows glow.
+const NOON = new THREE.Vector3(-34, 80, 44);
+const SUNRISE = new THREE.Vector3(-110, 18, 30);
+const SUNSET = new THREE.Vector3(70, 18, 30);
+const MOON = new THREE.Vector3(40, 90, 30);
+const LIGHT = {
+  sun: '#fff4dc', warmSun: '#ffb27a', moon: '#a9b8ff',
+  sky: '#ffffff', nightSky: '#5b67b8',
+  ground: '#cfc2ff', nightGround: '#2e2b5e',
+  glass: '#8fddf5', nightGlass: '#2c3770',
+};
+
+function glowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0, 'rgba(255, 226, 122, 0.9)');
+  gradient.addColorStop(0.4, 'rgba(255, 226, 122, 0.3)');
+  gradient.addColorStop(1, 'rgba(255, 226, 122, 0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(canvas);
+}
 const WALK_SPEED = 16;
 const WANDER_SPEED = 4.2;
 const CROWDED_CELL = 6; // Below this, people stay put: there's no room to wander.
@@ -164,6 +195,11 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     return m;
   }
 
+  // Windows and lamp bulbs have their own materials, so they can glow at night.
+  const windowGlass = new THREE.MeshToonMaterial({ color: LIGHT.glass, gradientMap: ramp });
+  const lampBulb = new THREE.MeshToonMaterial({ color: 0xffe27a, gradientMap: ramp });
+  const lampGlow = new THREE.SpriteMaterial({ map: glowTexture(), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+
   // ---- Scene ------------------------------------------------------------
 
   const scene = new THREE.Scene();
@@ -179,9 +215,10 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
   Object.assign(labels.domElement.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
   root.append(labels.domElement);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xcfc2ff, 1.9));
+  const sky = new THREE.HemisphereLight(0xffffff, 0xcfc2ff, 1.9);
+  scene.add(sky);
   const sun = new THREE.DirectionalLight(0xfff4dc, 1.35);
-  sun.position.set(-34, 80, 44);
+  sun.position.copy(NOON);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 60, bottom: -60, near: 1, far: 220 });
@@ -252,7 +289,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     const windows = Math.max(1, Math.floor(z.w / 11));
     for (let i = 0; i < windows; i++) {
       const wx = c.x - z.w / 2 + ((i + 0.5) * z.w) / windows;
-      group.add(mesh(new THREE.BoxGeometry(5, 2.6, 0.2), 0x8fddf5, { x: wx, y: 3.9, z: c.z - z.h / 2 + 0.75, shadow: false }));
+      group.add(mesh(new THREE.BoxGeometry(5, 2.6, 0.2), windowGlass, { x: wx, y: 3.9, z: c.z - z.h / 2 + 0.75, shadow: false }));
     }
     addPlant(group, c.x + z.w / 2 - 2.2, c.z - z.h / 2 + 2.4);
     addPlant(group, c.x - z.w / 2 + 2.4, c.z + z.h / 2 - 2.4);
@@ -268,6 +305,8 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     roof.rotation.y = Math.PI / 4;
     group.add(roof);
     group.add(mesh(new THREE.BoxGeometry(1.8, 3, 0.2), 0xb7a6ff, { x: hx, y: 2.5, z: hz + 3.55, shadow: false }));
+    // Lights up at night like the office windows.
+    group.add(mesh(new THREE.BoxGeometry(1.6, 1.4, 0.2), windowGlass, { x: hx + 2.4, y: 3.6, z: hz + 3.55, shadow: false }));
     addTree(group, c.x - z.w / 2 + 3, c.z + z.h / 2 - 3);
   }
 
@@ -292,7 +331,11 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
   function addLampPost(group: THREE.Group, x: number, z: number) {
     block(x, z, 0.5, 0.5);
     group.add(mesh(new THREE.CylinderGeometry(0.16, 0.2, 6, 8), INK, { x, y: 4, z }));
-    group.add(mesh(new THREE.SphereGeometry(0.6, 12, 8), 0xffe27a, { x, y: 7.2, z }));
+    group.add(mesh(new THREE.SphereGeometry(0.6, 12, 8), lampBulb, { x, y: 7.2, z }));
+    const glow = new THREE.Sprite(lampGlow);
+    glow.position.set(x, 7.2, z);
+    glow.scale.setScalar(6);
+    group.add(glow);
   }
 
   function addCar(group: THREE.Group, x: number, z: number) {
@@ -886,6 +929,26 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
   return {
     update: apply,
     applyPreset: (id) => applyPreset(id),
+    setAmbience({ daylight, warmth, phase, lamps }) {
+      sky.color.set(mixColor(LIGHT.nightSky, LIGHT.sky, daylight));
+      sky.groundColor.set(mixColor(LIGHT.nightGround, LIGHT.ground, daylight));
+      sky.intensity = 1.1 + 0.8 * daylight;
+
+      sun.color.set(mixColor(LIGHT.moon, mixColor(LIGHT.sun, LIGHT.warmSun, warmth), daylight));
+      sun.intensity = 0.5 + 0.85 * daylight;
+      // Low on the rising or setting side, swinging up to midday as it gets light.
+      const low = phase === 'dusk' ? SUNSET : SUNRISE;
+      const daySun = low.clone().lerp(NOON, daylight);
+      sun.position.copy(MOON).lerp(daySun, Math.min(1, daylight * 3));
+
+      windowGlass.color.set(mixColor(LIGHT.glass, LIGHT.nightGlass, lamps * 0.7));
+      windowGlass.emissive.set(0xffc861);
+      windowGlass.emissiveIntensity = lamps * 0.9;
+      lampBulb.emissive.set(0xffe27a);
+      lampBulb.emissiveIntensity = lamps * 0.8;
+      lampGlow.opacity = lamps * 0.85;
+    },
+
     setWandering(on) {
       wandering = on;
       const time = performance.now() / 1000;
@@ -917,6 +980,8 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
       });
       for (const character of characters.values()) character.bodyMaterial.dispose();
       for (const material of materials.values()) material.dispose();
+      lampGlow.map?.dispose();
+      lampGlow.dispose();
       ramp.dispose();
       renderer.dispose();
       renderer.forceContextLoss(); // Browsers allow only a few live 3D contexts.

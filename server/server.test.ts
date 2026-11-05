@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { createApp, latestResetDate, type AppOptions } from './server.ts';
+import { sunTimes } from './core.ts';
 import type { OfficeLocation, TeamState, TeamUser } from '../shared/types.ts';
 
 const ADMIN = { 'x-admin-password': 'secret' };
@@ -243,7 +244,11 @@ function fakeWeatherService() {
         ],
       });
     }
-    return jsonReply({ current: { temperature_2m: service.temperature, weather_code: 2, is_day: 0 } });
+    return jsonReply({
+      current: { temperature_2m: service.temperature, weather_code: 2, is_day: 0 },
+      // 5 to 7 November 2026 in Hanoi: about 06:00 and 17:20 local time.
+      daily: { sunrise: [1793833200, 1793919600, 1794006060], sunset: [1793874000, 1793960340, 1794046680] },
+    });
   };
   return service;
 }
@@ -301,6 +306,9 @@ test('setting the office location fetches its weather, and clearing removes it',
   assert.equal(weather.code, 2);
   assert.equal(weather.isDay, false);
   assert.ok(service.calls.at(-1)!.includes('latitude=21.02'));
+  assert.ok(service.calls.at(-1)!.includes('daily=sunrise%2Csunset'));
+  assert.deepEqual(weather.sun[1], { rise: '2026-11-05T23:00:00.000Z', set: '2026-11-06T10:19:00.000Z' });
+  assert.equal(weather.sun.length, 3);
 
   await api('PATCH', '/api/admin/settings', { office: null }, ADMIN);
   const cleared = (await api('GET', '/api/state')).json;
@@ -589,4 +597,14 @@ test('people in an office that is gone count as not checked in after an import',
   const user = { username: 'a', nickname: 'a', place: 'old-office', status: '', updatedAt: null, pinHash: null, pinVersion: 1 };
   assert.equal((await api('PUT', '/api/admin/data', { lastResetDate: '2026-11-03', users: [user] }, ADMIN)).status, 200);
   assert.equal((await api('GET', '/api/state')).json.users[0].place, null);
+});
+
+test('sun times pair up by day, leaving out days without a real sunrise and sunset', () => {
+  assert.deepEqual(sunTimes([0, 86_400], [3_600, 90_000]), [
+    { rise: '1970-01-01T00:00:00.000Z', set: '1970-01-01T01:00:00.000Z' },
+    { rise: '1970-01-02T00:00:00.000Z', set: '1970-01-02T01:00:00.000Z' },
+  ]);
+  // Polar night and day: no sunrise, a sunset before sunrise, or a full day of sun.
+  assert.deepEqual(sunTimes([null, 100, 0], [50, 50, 86_400]), []);
+  assert.deepEqual(sunTimes(), []);
 });

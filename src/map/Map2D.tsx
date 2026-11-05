@@ -4,7 +4,7 @@ import styled, { css, keyframes, type RuleSet } from 'styled-components';
 import type { TeamUser } from '../../shared/types.ts';
 import { Badge, BadgeFigure, type SelectHandler } from '../components/Badge.tsx';
 import { Desk, Mochi, MochiSvg } from '../components/Mochi.tsx';
-import { useElementSize } from '../lib/hooks.ts';
+import { useAmbience, useElementSize } from '../lib/hooks.ts';
 import { computeLayout, type MapLayout, type Seat, type Zone, type ZoneKind } from '../lib/layout.ts';
 import { lookFor } from '../lib/look.ts';
 import { media, theme } from '../styles/theme.ts';
@@ -16,6 +16,55 @@ const HOP_MS = 900;
 const MapFill = styled.div`
   position: absolute;
   inset: 0;
+`;
+
+// ---- Daylight -------------------------------------------------------------
+// The map sets --night, --warm, --lamps, --sky-top and --sky-bottom from the
+// office's daylight (lib/ambience.ts). In the daytime they're all zero, so the
+// map looks just as it always has.
+
+/** The sky behind the town, which only shows at dawn, dusk and night. */
+const Sky = styled.div`
+  position: absolute;
+  inset: 0;
+  border-radius: 22px;
+  background: linear-gradient(var(--sky-top), var(--sky-bottom));
+  opacity: max(var(--night), var(--warm));
+  pointer-events: none;
+`;
+
+const Stars = styled(Sky)`
+  background:
+    radial-gradient(#fff 1px, transparent 1.7px) 0 0 / 53px 47px,
+    radial-gradient(rgb(255 255 255 / .7) 1px, transparent 1.7px) 23px 31px / 71px 61px;
+  opacity: calc((var(--night) - .5) * 2);
+`;
+
+/**
+ * Dims an area's floor and furniture at night and warms it at sunset, beneath the
+ * people and their names so they stay easy to read. Indoor rooms keep their lights on.
+ */
+const shade = css`
+  &::after {
+    --tint-warm: rgb(255 140 70 / calc(var(--warm, 0) * .2));
+    --tint-lights: rgb(255 214 140 / calc(var(--night, 0) * var(--lights, 0)));
+    --tint-night: rgb(28 32 92 / calc(var(--night, 0) * var(--dark, .55)));
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      linear-gradient(var(--tint-warm), var(--tint-warm)),
+      linear-gradient(var(--tint-lights), var(--tint-lights)),
+      linear-gradient(var(--tint-night), var(--tint-night));
+    mix-blend-mode: multiply;
+    pointer-events: none;
+  }
+`;
+
+const INDOORS = css`
+  --dark: .12;
+  --lights: .22;
 `;
 
 const Plan = styled.div`
@@ -65,6 +114,8 @@ const Room = styled.section<{ $kind: ZoneKind }>`
   ${media.reducedMotion} { transition: none; }
 
   ${({ $kind }) => ZONE_LOOKS[$kind]}
+  ${({ $kind }) => ($kind === 'office' || $kind === 'lobby') && INDOORS}
+  ${shade}
 `;
 
 const Park = styled.div`
@@ -74,6 +125,8 @@ const Park = styled.div`
   transition: left ${GLIDE}, top ${GLIDE}, width ${GLIDE}, height ${GLIDE};
 
   ${media.reducedMotion} { transition: none; }
+
+  ${shade}
 `;
 
 const RoomTitle = styled.h2`
@@ -130,6 +183,20 @@ const StreetPiece = styled.div`
   svg { display: block; }
 `;
 
+// A lamp's light, which shows as it gets dark. It sits above the street's night shade.
+const LampGlow = styled.span`
+  position: absolute;
+  z-index: -1;
+  left: 69%;
+  top: 25%;
+  width: 260%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(255 226 122 / .85), rgb(255 226 122 / .3) 45%, transparent);
+  opacity: var(--lamps, 0);
+  transform: translate(-50%, -50%);
+`;
+
 // Painted across the whole road, from the curb to the bottom edge.
 const Crosswalk = styled(StreetPiece)`
   top: calc(${PAVEMENT + CURB}% + 4px);
@@ -144,11 +211,11 @@ const Crosswalk = styled(StreetPiece)`
  * above at any street height. The left one keeps clear of the street's name.
  */
 function StreetDecor() {
-  const lamp = { bottom: `${100 - PAVEMENT}%`, height: `calc(${PAVEMENT}% + 8px)`, aspectRatio: '36 / 52' };
+  const lamp = { bottom: `${100 - PAVEMENT}%`, height: `calc(${PAVEMENT}% + 8px)`, aspectRatio: '36 / 52', zIndex: 1 };
   return (
     <>
-      <StreetPiece style={{ ...lamp, left: 'max(16%, 150px)' }}>{STREET_ART.lamp}</StreetPiece>
-      <StreetPiece style={{ ...lamp, right: '24%' }}>{STREET_ART.lamp}</StreetPiece>
+      <StreetPiece style={{ ...lamp, left: 'max(16%, 150px)' }}><LampGlow />{STREET_ART.lamp}</StreetPiece>
+      <StreetPiece style={{ ...lamp, right: '24%' }}><LampGlow />{STREET_ART.lamp}</StreetPiece>
       <Crosswalk />
       <StreetPiece style={{ right: '2%', bottom: '8%', height: `min(${(100 - PAVEMENT) * 0.5}%, 42px)`, aspectRatio: '90 / 50' }}>
         {STREET_ART.car}
@@ -306,6 +373,14 @@ function Person({ user, seat, layout, scale, dimmed, selected, onSelect }: Perso
 
 export default function Map2D({ state, isDimmed, selected, onSelect }: MapProps) {
   const fillRef = useRef<HTMLDivElement>(null);
+  const look = useAmbience(state.weather);
+  const daylight = {
+    '--night': 1 - look.daylight,
+    '--warm': look.warmth,
+    '--lamps': look.lamps,
+    '--sky-top': look.sky.top,
+    '--sky-bottom': look.sky.bottom,
+  } as CSSProperties;
   const { width, height } = useElementSize(fillRef);
   const portrait = height > 0 && width / height < 0.95;
   const layout = useMemo(() => computeLayout(state.places, state.users, { portrait }), [state.places, state.users, portrait]);
@@ -320,7 +395,9 @@ export default function Map2D({ state, isDimmed, selected, onSelect }: MapProps)
   }
 
   return (
-    <MapFill data-map-root ref={fillRef}>
+    <MapFill data-map-root data-daylight={look.phase} ref={fillRef} style={daylight}>
+      <Sky />
+      <Stars />
       {width > 0 && height > 0 && (
         <Plan style={{ width: layout.width * scale, height: layout.height * scale }}>
           {layout.park && (

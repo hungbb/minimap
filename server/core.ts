@@ -14,7 +14,7 @@ import {
   type CharacterDesign,
   type Stroke,
 } from '../shared/look.ts';
-import type { AuthResult, Clock, OfficeLocation, Place, TeamState, Weather } from '../shared/types.ts';
+import type { AuthResult, Clock, OfficeLocation, Place, SunTimes, TeamState, Weather } from '../shared/types.ts';
 
 export type JsonBody = Record<string, unknown>;
 
@@ -86,6 +86,24 @@ const WEATHER_TIMEOUT_MS = 8000;
 const WEATHER_STALE_MS = 3 * 60 * 60 * 1000;
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Pairs the weather service's sunrise and sunset times (seconds since 1970) by day.
+ * Days without a real sunrise and sunset, as in polar day or night, are left out.
+ */
+export function sunTimes(rises: unknown[] = [], sets: unknown[] = []): SunTimes[] {
+  const days: SunTimes[] = [];
+  rises.forEach((rise, i) => {
+    const set = sets[i];
+    if (typeof rise !== 'number' || typeof set !== 'number') return;
+    const length = (set - rise) * 1000;
+    if (!(length > 0 && length < DAY_MS)) return;
+    days.push({ rise: new Date(rise * 1000).toISOString(), set: new Date(set * 1000).toISOString() });
+  });
+  return days;
+}
 
 const DEFAULT_SETTINGS: Settings = {
   publicUrl: '',
@@ -370,11 +388,17 @@ export function createCore({
       latitude: String(office.latitude),
       longitude: String(office.longitude),
       current: 'temperature_2m,weather_code,is_day',
+      // Sunrise and sunset around today, so the map can show daylight between refreshes.
+      daily: 'sunrise,sunset',
+      past_days: '1',
+      forecast_days: '2',
+      timeformat: 'unixtime',
       timezone: 'auto',
     });
     try {
-      const { current } = await fetchJson<{
+      const { current, daily } = await fetchJson<{
         current?: { temperature_2m: number; weather_code: number; is_day: number };
+        daily?: { sunrise?: unknown[]; sunset?: unknown[] };
       }>(`${FORECAST_URL}?${params}`);
       if (run !== weatherRun) return; // The location changed while this was running.
       if (typeof current?.temperature_2m !== 'number') throw new Error('unexpected reply');
@@ -383,6 +407,7 @@ export function createCore({
         code: current.weather_code,
         isDay: current.is_day === 1,
         updatedAt: now().toISOString(),
+        sun: sunTimes(daily?.sunrise, daily?.sunset),
       };
     } catch (err) {
       if (run !== weatherRun) return;

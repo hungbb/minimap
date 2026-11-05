@@ -1,8 +1,9 @@
 // The 3D map: React draws the controls and badges around a three.js scene.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import styled, { css } from 'styled-components';
 import { Badge, BadgeName } from '../components/Badge.tsx';
+import { useAmbience } from '../lib/hooks.ts';
 import { media, theme } from '../styles/theme.ts';
 import { Button } from '../styles/ui.ts';
 import { createScene3D, type CameraState, type Scene3D, type ZoneLabelSlot } from './scene3d.ts';
@@ -14,7 +15,8 @@ const View = styled.div<{ $namesOff: boolean }>`
   overflow: hidden;
   border: ${theme.line};
   border-radius: 22px;
-  background: linear-gradient(#a9dcff, #e4f6ff 70%);
+  /* The sky follows the time of day at the office (lib/ambience.ts). */
+  background: linear-gradient(var(--sky-top), var(--sky-bottom) 70%);
   box-shadow: 0 5px 0 ${theme.ink};
 
   ${({ $namesOff }) => $namesOff && css`
@@ -90,6 +92,13 @@ const CameraHint = styled.p`
   font-weight: 700;
   pointer-events: none;
 
+  /* Stays readable against a dark sky. */
+  [data-daylight='night'] &, [data-daylight='dawn'] &, [data-daylight='dusk'] & {
+    padding: 0 8px;
+    border-radius: 8px;
+    background: rgb(255 254 250 / .85);
+  }
+
   ${media.phone} { display: none; }
 `;
 
@@ -101,6 +110,7 @@ export default function Map3D({ state, isDimmed, selected, focus, onSelect }: Ma
   const [camera, setCamera] = useState<CameraState>({ presets: [], active: 'overview' });
   const [namesOn, setNamesOn] = useState(true);
   const [wanderOn, setWanderOn] = useState(true);
+  const look = useAmbience(state.weather);
 
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -138,8 +148,17 @@ export default function Map3D({ state, isDimmed, selected, focus, onSelect }: Ma
     sceneRef.current?.setWandering(wanderOn);
   }, [wanderOn]);
 
+  useEffect(() => {
+    sceneRef.current?.setAmbience(look);
+  }, [look]);
+
   return (
-    <View data-map-root $namesOff={!namesOn}>
+    <View
+      data-map-root
+      data-daylight={look.phase}
+      $namesOff={!namesOn}
+      style={{ '--sky-top': look.sky.top, '--sky-bottom': look.sky.bottom } as CSSProperties}
+    >
       <SceneStage ref={stageRef} />
 
       <CameraBar>

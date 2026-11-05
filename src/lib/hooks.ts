@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import type { TeamState } from '../../shared/types.ts';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import type { TeamState, Weather } from '../../shared/types.ts';
+import { ambience, defaultSun, previewTime, type Ambience } from './ambience.ts';
 import { subscribe } from './api.ts';
 
 export function useTeamState(): { state: TeamState | null; online: boolean } {
@@ -66,4 +67,22 @@ export function useReducedMotion(): boolean {
     return () => list.removeEventListener('change', onChange);
   }, []);
   return reduced;
+}
+
+/**
+ * How the town should look now, from the office's weather. Checked every minute so
+ * the light changes gradually. `?time=dusk` (or dawn, day, night, or a local HH:MM)
+ * previews another time of day on this screen only.
+ */
+export function useAmbience(weather: Weather | null): Ambience {
+  const [preview] = useState(() => new URLSearchParams(location.search).get('time'));
+  const now = useNow(60_000);
+  const minute = Math.floor(now.getTime() / 60_000);
+  return useMemo(() => {
+    const at = new Date(minute * 60_000);
+    if (!preview) return ambience(weather, at);
+    const sun = weather?.sun?.length ? weather.sun : defaultSun(at);
+    const shown = previewTime(preview, sun, at);
+    return shown ? ambience({ isDay: weather?.isDay ?? true, sun }, shown) : ambience(weather, at);
+  }, [weather, preview, minute]);
 }

@@ -29,11 +29,19 @@ export interface PublicSettings {
   officeName: string;
 }
 
+/** When the sun rises and sets at the office on one day, as ISO instants. */
+export interface SunTimes {
+  rise: string;
+  set: string;
+}
+
 export interface Weather {
   temperature: number;
   code: number;
   isDay: boolean;
   updatedAt: string;
+  /** Yesterday, today and tomorrow at the office, so the map can light the town. Missing in polar day or night. */
+  sun?: SunTimes[];
 }
 
 export interface TeamState {

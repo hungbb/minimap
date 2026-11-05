@@ -71,7 +71,7 @@ npm test
 | `src/pages/` | The Monitor, User and Admin pages |
 | `src/components/` | Badge, detail card, characters and the clocks, weather and QR panel |
 | `src/map/` | The 2D map, and the 3D map with its three.js scene |
-| `src/lib/` | API calls, React hooks, and where rooms and seats go |
+| `src/lib/` | API calls, React hooks, where rooms and seats go, and the time-of-day look (`ambience.ts`) |
 | `src/styles/` | Colors and fonts (`theme.ts`), page-wide styles, and shared buttons and form pieces. Other styles sit in the component that uses them |
 | `public/` | Fonts and Cloudflare's cache rules (`_headers`), copied as they are into the build |
 
@@ -171,6 +171,12 @@ Set these on the Admin page. They apply straight away and are saved with the res
 - **Clocks:** a name and time zone for each of the two clocks.
 - **Main office location:** search for a city and pick it to show its weather. Remove it to hide the weather.
 
+### Daylight on the map
+
+Once the main office location is set, the 2D and 3D maps follow the time of day there, using the office's real sunrise and sunset. The town gets warm light around sunrise and sunset, and a starry sky at night with glowing street lamps and lit office windows. Names, statuses and characters stay as readable as in the daytime. In the middle of the day, and without an office location, the map looks just as it always has.
+
+To preview another time of day on one screen, add `?time=dawn`, `day`, `dusk`, `night` or a local time such as `?time=21:30` to the map's address (for example `/?mode=3d&time=dusk`). It only changes that screen. Without an office location, the preview uses a 06:00 sunrise and an 18:00 sunset.
+
 ## Settings
 
 Set these in `.env`, then restart.
@@ -194,6 +200,6 @@ Avoid `$` in `ADMIN_PASSWORD` when using Docker, because Docker Compose treats i
 - **Forgotten PIN:** the admin clicks Release on that username, and the person claims it again with a new PIN.
 - **Morning reset:** clears place and status for everyone. Nicknames and PINs stay. If the server was off at reset time, the reset runs when it next starts.
 - **More offices:** stop the server and add an entry to `places` in `data.json`. The first entry is the main office, and both maps make room for the rest. In Docker, copy the file out and back with `docker compose cp`.
-- **Weather:** the server gets it from [Open-Meteo](https://open-meteo.com) every 15 minutes, sending only the office coordinates. Browsers never contact it. The server needs internet access for this, and everything else works without it. If updates fail, the last reading stays for up to 3 hours, then the map shows "Weather unavailable". Check [Open-Meteo's terms](https://open-meteo.com/en/terms) for your use, because its free service is for non-commercial use. Its data license requires the credit line shown under the weather, so keep that in place.
+- **Weather:** the server gets it from [Open-Meteo](https://open-meteo.com) every 15 minutes, sending only the office coordinates. It also gets the sunrise and sunset times for the map's daylight. Browsers never contact it. The server needs internet access for this, and everything else works without it. If updates fail, the last reading stays for up to 3 hours, then the map shows "Weather unavailable". Check [Open-Meteo's terms](https://open-meteo.com/en/terms) for your use, because its free service is for non-commercial use. Its data license requires the credit line shown under the weather, so keep that in place.
 - **Working from home:** teammates can only update their status if they can reach the server, for example over your VPN.
 - **Security:** this is built for a trusted office network. The Node.js server uses plain HTTP, so passwords and PINs are not encrypted on the network. Put a reverse proxy with HTTPS in front before exposing it more widely, or deploy to Cloudflare, which uses HTTPS.
