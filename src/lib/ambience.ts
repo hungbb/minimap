@@ -5,6 +5,25 @@ import type { SunTimes, Weather } from '../../shared/types.ts';
 
 export type Phase = 'night' | 'dawn' | 'day' | 'dusk';
 
+export type Precipitation = 'none' | 'drizzle' | 'rain' | 'snow';
+
+/** The weather the town shows, each part from 0 (none) to 1 (as much as there is). */
+export interface Conditions {
+  precipitation: Precipitation;
+  /** How heavily it rains or snows. */
+  intensity: number;
+  clouds: number;
+  fog: number;
+  /** A thunderstorm: occasional soft lightning. */
+  storm: boolean;
+  /** How grey and dim an overcast day is. */
+  gloom: number;
+  /** Blows rain and snow sideways. */
+  wind: number;
+}
+
+export const CLEAR: Conditions = { precipitation: 'none', intensity: 0, clouds: 0, fog: 0, storm: false, gloom: 0, wind: 0 };
+
 export interface Ambience {
   /** 0 is full night, 1 full day. Changes smoothly around sunrise and sunset. */
   daylight: number;
@@ -15,7 +34,11 @@ export interface Ambience {
   lamps: number;
   /** The sky behind the town. */
   sky: { top: string; bottom: string };
+  weather: Conditions;
 }
+
+/** What `ambience` reads from the weather. Everything but the day and night flag is optional. */
+export type WeatherInput = Pick<Weather, 'isDay'> & Partial<Pick<Weather, 'sun' | 'code' | 'cloudCover' | 'precipitation' | 'windSpeed'>>;
 
 const MINUTE = 60_000;
 /** Light fades in from this long before sunrise until this long after it, and the other way round at sunset. */
@@ -30,9 +53,11 @@ const PHASE_AFTER = { rise: 70 * MINUTE, set: 60 * MINUTE };
 const DAY_SKY = { top: '#a9dcff', bottom: '#e4f6ff' };
 const NIGHT_SKY = { top: '#141a45', bottom: '#363c7d' };
 const WARM_SKY = { top: '#8f9be8', bottom: '#ffb27a' };
+const GREY_SKY = { top: '#9aa6b8', bottom: '#d2d8e2' };
+const NIGHT_GREY_SKY = { top: '#272c45', bottom: '#3e4463' };
 
 /** The town's look in the daytime, and whenever there's no weather to go by. */
-export const DAY: Ambience = { daylight: 1, warmth: 0, phase: 'day', lamps: 0, sky: DAY_SKY };
+export const DAY: Ambience = { daylight: 1, warmth: 0, phase: 'day', lamps: 0, sky: DAY_SKY, weather: CLEAR };
 
 function clamp(value: number): number {
   return Math.min(1, Math.max(0, value));
@@ -90,15 +115,76 @@ function skyFor(daylight: number, warmth: number): Ambience['sky'] {
   return { top: mixColor(top, WARM_SKY.top, warmth * 0.85), bottom: mixColor(bottom, WARM_SKY.bottom, warmth * 0.85) };
 }
 
+// WMO weather codes, as Open-Meteo sends them.
+function fromCode(code: number): Conditions {
+  const wet = (precipitation: Precipitation, intensity: number, extra: Partial<Conditions> = {}): Conditions => ({
+    ...CLEAR, precipitation, intensity, clouds: 0.9, gloom: 0.3 + intensity * 0.3, ...extra,
+  });
+  if (code <= 0) return CLEAR;
+  if (code === 1) return { ...CLEAR, clouds: 0.25 };
+  if (code === 2) return { ...CLEAR, clouds: 0.55 };
+  if (code === 3) return { ...CLEAR, clouds: 0.9, gloom: 0.3 };
+  if (code === 45 || code === 48) return { ...CLEAR, clouds: 0.6, fog: code === 48 ? 0.9 : 0.75, gloom: 0.25 };
+  if (code === 51 || code === 56) return wet('drizzle', 0.35);
+  if (code === 53) return wet('drizzle', 0.55);
+  if (code === 55 || code === 57) return wet('drizzle', 0.75);
+  if (code === 61) return wet('rain', 0.4);
+  if (code === 63 || code === 66) return wet('rain', 0.7);
+  if (code === 65 || code === 67) return wet('rain', 1);
+  if (code === 71 || code === 77) return wet('snow', 0.4);
+  if (code === 73 || code === 85) return wet('snow', 0.7);
+  if (code === 75 || code === 86) return wet('snow', 1);
+  if (code === 80) return wet('rain', 0.5, { clouds: 0.7 });
+  if (code === 81) return wet('rain', 0.8, { clouds: 0.8 });
+  if (code === 82) return wet('rain', 1);
+  if (code >= 95) return wet('rain', 1, { storm: true, gloom: 0.7 });
+  return CLEAR;
+}
+
+/** The weather to show: the weather code, fine-tuned by cloud cover, rain amount and wind when they're known. */
+export function conditions(weather: WeatherInput | null): Conditions {
+  if (!weather || weather.code === undefined) return CLEAR;
+  const base = fromCode(weather.code);
+  const result = { ...base };
+  // Cloud cover sharpens the clear-to-cloudy codes, which only come in four steps.
+  if (weather.cloudCover !== undefined && weather.code <= 3) result.clouds = clamp(weather.cloudCover / 100);
+  // A heavy downpour can be heavier than its code says.
+  if (weather.precipitation !== undefined && base.precipitation !== 'none') {
+    result.intensity = Math.max(base.intensity, clamp(weather.precipitation / 6));
+  }
+  if (weather.windSpeed !== undefined) result.wind = clamp(weather.windSpeed / 40);
+  return result;
+}
+
+function isClear(weather: Conditions): boolean {
+  return (Object.keys(CLEAR) as (keyof Conditions)[]).every((key) => weather[key] === CLEAR[key]);
+}
+
+function greySky(sky: Ambience['sky'], daylight: number, gloom: number): Ambience['sky'] {
+  if (gloom <= 0) return sky;
+  const top = mixColor(NIGHT_GREY_SKY.top, GREY_SKY.top, daylight);
+  const bottom = mixColor(NIGHT_GREY_SKY.bottom, GREY_SKY.bottom, daylight);
+  return { top: mixColor(sky.top, top, gloom), bottom: mixColor(sky.bottom, bottom, gloom) };
+}
+
 /**
  * The look of the town at `at`. Without weather, the town keeps its daytime look.
  * Without sun times (polar day or night), it goes by whether the weather service says it's day.
  */
-export function ambience(weather: Pick<Weather, 'isDay' | 'sun'> | null, at: Date): Ambience {
+export function ambience(weather: WeatherInput | null, at: Date): Ambience {
+  const light = daylightAt(weather, at);
+  const now = conditions(weather);
+  if (isClear(now)) return light;
+  // Dark storm clouds bring the lamps on a little, even by day.
+  const lamps = Math.max(light.lamps, clamp((now.gloom - 0.6) * 2.5) * 0.6);
+  return { ...light, lamps, sky: greySky(light.sky, light.daylight, now.gloom), weather: now };
+}
+
+function daylightAt(weather: WeatherInput | null, at: Date): Ambience {
   if (!weather) return DAY;
   const t = at.getTime();
   const known = days(weather.sun ?? []).filter((day) => t >= day.rise - 12 * 60 * MINUTE && t <= day.set + 12 * 60 * MINUTE);
-  if (!known.length) return weather.isDay ? DAY : { daylight: 0, warmth: 0, phase: 'night', lamps: 1, sky: skyFor(0, 0) };
+  if (!known.length) return weather.isDay ? DAY : { daylight: 0, warmth: 0, phase: 'night', lamps: 1, sky: skyFor(0, 0), weather: CLEAR };
 
   const daylight = Math.max(...known.map((day) => lightOn(day, t)));
   const warmth = Math.max(
@@ -110,8 +196,21 @@ export function ambience(weather: Pick<Weather, 'isDay' | 'sun'> | null, at: Dat
     if (t >= day.set - PHASE_BEFORE.set && t <= day.set + PHASE_AFTER.set) phase = 'dusk';
   }
   if (daylight === 1 && warmth === 0) return { ...DAY, phase };
-  return { daylight, warmth, phase, lamps: lampsFor(daylight), sky: skyFor(daylight, warmth) };
+  return { daylight, warmth, phase, lamps: lampsFor(daylight), sky: skyFor(daylight, warmth), weather: CLEAR };
 }
+
+/** Weather a `?weather=` preview can show, as the code the weather service would send. */
+export const PREVIEW_WEATHER: Record<string, number> = {
+  clear: 0,
+  partly: 2,
+  cloudy: 3,
+  fog: 45,
+  drizzle: 53,
+  rain: 63,
+  downpour: 65,
+  snow: 73,
+  storm: 95,
+};
 
 /** Sunrise at 06:00 and sunset at 18:00 local time, for previewing without an office location. */
 export function defaultSun(now: Date): SunTimes[] {

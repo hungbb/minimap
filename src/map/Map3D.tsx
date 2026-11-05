@@ -3,11 +3,12 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import styled, { css } from 'styled-components';
 import { Badge, BadgeName } from '../components/Badge.tsx';
-import { useAmbience } from '../lib/hooks.ts';
+import { useAmbience, useReducedMotion } from '../lib/hooks.ts';
 import { media, theme } from '../styles/theme.ts';
 import { Button } from '../styles/ui.ts';
 import { createScene3D, type CameraState, type Scene3D, type ZoneLabelSlot } from './scene3d.ts';
 import type { MapProps } from './types.ts';
+import { Clouds } from './Weather2D.tsx';
 
 const View = styled.div<{ $namesOff: boolean }>`
   position: absolute;
@@ -22,6 +23,12 @@ const View = styled.div<{ $namesOff: boolean }>`
   ${({ $namesOff }) => $namesOff && css`
     ${BadgeName} { display: none; }
   `}
+`;
+
+const SkyLayer = styled.div`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 `;
 
 const SceneStage = styled.div`
@@ -111,6 +118,7 @@ export default function Map3D({ state, isDimmed, selected, focus, onSelect }: Ma
   const [namesOn, setNamesOn] = useState(true);
   const [wanderOn, setWanderOn] = useState(true);
   const look = useAmbience(state.weather);
+  const reduced = useReducedMotion();
 
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -159,6 +167,10 @@ export default function Map3D({ state, isDimmed, selected, focus, onSelect }: Ma
       $namesOff={!namesOn}
       style={{ '--sky-top': look.sky.top, '--sky-bottom': look.sky.bottom } as CSSProperties}
     >
+      {/* Behind the canvas, so they only show in the sky above the town. */}
+      <SkyLayer aria-hidden="true">
+        <Clouds look={look} reduced={reduced} sky />
+      </SkyLayer>
       <SceneStage ref={stageRef} />
 
       <CameraBar>

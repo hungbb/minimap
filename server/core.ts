@@ -105,6 +105,10 @@ export function sunTimes(rises: unknown[] = [], sets: unknown[] = []): SunTimes[
   return days;
 }
 
+function optionalNumber<K extends string>(key: K, value: unknown): { [key in K]?: number } {
+  return typeof value === 'number' && Number.isFinite(value) ? ({ [key]: value } as { [key in K]: number }) : {};
+}
+
 const DEFAULT_SETTINGS: Settings = {
   publicUrl: '',
   clocks: [
@@ -387,7 +391,7 @@ export function createCore({
     const params = new URLSearchParams({
       latitude: String(office.latitude),
       longitude: String(office.longitude),
-      current: 'temperature_2m,weather_code,is_day',
+      current: 'temperature_2m,weather_code,is_day,cloud_cover,precipitation,wind_speed_10m',
       // Sunrise and sunset around today, so the map can show daylight between refreshes.
       daily: 'sunrise,sunset',
       past_days: '1',
@@ -397,7 +401,14 @@ export function createCore({
     });
     try {
       const { current, daily } = await fetchJson<{
-        current?: { temperature_2m: number; weather_code: number; is_day: number };
+        current?: {
+          temperature_2m: number;
+          weather_code: number;
+          is_day: number;
+          cloud_cover?: unknown;
+          precipitation?: unknown;
+          wind_speed_10m?: unknown;
+        };
         daily?: { sunrise?: unknown[]; sunset?: unknown[] };
       }>(`${FORECAST_URL}?${params}`);
       if (run !== weatherRun) return; // The location changed while this was running.
@@ -408,6 +419,10 @@ export function createCore({
         isDay: current.is_day === 1,
         updatedAt: now().toISOString(),
         sun: sunTimes(daily?.sunrise, daily?.sunset),
+        // Extra detail for the map's weather; left out if the service doesn't send it.
+        ...optionalNumber('cloudCover', current.cloud_cover),
+        ...optionalNumber('precipitation', current.precipitation),
+        ...optionalNumber('windSpeed', current.wind_speed_10m),
       };
     } catch (err) {
       if (run !== weatherRun) return;

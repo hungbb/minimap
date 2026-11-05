@@ -4,12 +4,13 @@ import styled, { css, keyframes, type RuleSet } from 'styled-components';
 import type { TeamUser } from '../../shared/types.ts';
 import { Badge, BadgeFigure, type SelectHandler } from '../components/Badge.tsx';
 import { Desk, Mochi, MochiSvg } from '../components/Mochi.tsx';
-import { useAmbience, useElementSize } from '../lib/hooks.ts';
+import { useAmbience, useElementSize, useReducedMotion } from '../lib/hooks.ts';
 import { computeLayout, type MapLayout, type Seat, type Zone, type ZoneKind } from '../lib/layout.ts';
 import { lookFor } from '../lib/look.ts';
 import { media, theme } from '../styles/theme.ts';
 import { DECOR, PARK_TREES, STREET_ART } from './decor.tsx';
 import type { MapProps } from './types.ts';
+import { hasWeather, Weather2D } from './Weather2D.tsx';
 
 const HOP_MS = 900;
 
@@ -23,13 +24,13 @@ const MapFill = styled.div`
 // office's daylight (lib/ambience.ts). In the daytime they're all zero, so the
 // map looks just as it always has.
 
-/** The sky behind the town, which only shows at dawn, dusk and night. */
+/** The sky behind the town, which only shows at dawn, dusk, night and on grey days. */
 const Sky = styled.div`
   position: absolute;
   inset: 0;
   border-radius: 22px;
   background: linear-gradient(var(--sky-top), var(--sky-bottom));
-  opacity: max(var(--night), var(--warm));
+  opacity: max(var(--night), var(--warm), var(--gloom));
   pointer-events: none;
 `;
 
@@ -37,7 +38,8 @@ const Stars = styled(Sky)`
   background:
     radial-gradient(#fff 1px, transparent 1.7px) 0 0 / 53px 47px,
     radial-gradient(rgb(255 255 255 / .7) 1px, transparent 1.7px) 23px 31px / 71px 61px;
-  opacity: calc((var(--night) - .5) * 2);
+  /* Clouds hide them. */
+  opacity: calc((var(--night) - .5) * 2 * (1 - var(--clouds)));
 `;
 
 /**
@@ -49,6 +51,7 @@ const shade = css`
     --tint-warm: rgb(255 140 70 / calc(var(--warm, 0) * .2));
     --tint-lights: rgb(255 214 140 / calc(var(--night, 0) * var(--lights, 0)));
     --tint-night: rgb(28 32 92 / calc(var(--night, 0) * var(--dark, .55)));
+    --tint-gloom: rgb(120 128 150 / calc(var(--gloom, 0) * var(--grey, .4)));
     content: '';
     position: absolute;
     inset: 0;
@@ -56,7 +59,8 @@ const shade = css`
     background:
       linear-gradient(var(--tint-warm), var(--tint-warm)),
       linear-gradient(var(--tint-lights), var(--tint-lights)),
-      linear-gradient(var(--tint-night), var(--tint-night));
+      linear-gradient(var(--tint-night), var(--tint-night)),
+      linear-gradient(var(--tint-gloom), var(--tint-gloom));
     mix-blend-mode: multiply;
     pointer-events: none;
   }
@@ -65,6 +69,7 @@ const shade = css`
 const INDOORS = css`
   --dark: .12;
   --lights: .22;
+  --grey: .15;
 `;
 
 const Plan = styled.div`
@@ -374,12 +379,15 @@ function Person({ user, seat, layout, scale, dimmed, selected, onSelect }: Perso
 export default function Map2D({ state, isDimmed, selected, onSelect }: MapProps) {
   const fillRef = useRef<HTMLDivElement>(null);
   const look = useAmbience(state.weather);
+  const reduced = useReducedMotion();
   const daylight = {
     '--night': 1 - look.daylight,
     '--warm': look.warmth,
     '--lamps': look.lamps,
     '--sky-top': look.sky.top,
     '--sky-bottom': look.sky.bottom,
+    '--gloom': look.weather.gloom,
+    '--clouds': look.weather.clouds,
   } as CSSProperties;
   const { width, height } = useElementSize(fillRef);
   const portrait = height > 0 && width / height < 0.95;
@@ -430,6 +438,7 @@ export default function Map2D({ state, isDimmed, selected, onSelect }: MapProps)
           {layout.zones.map((zone) => (
             <ZoneRoom key={zone.id} zone={zone} layout={layout} busy={isBusy(zone)} />
           ))}
+          {hasWeather(look) && <Weather2D look={look} reduced={reduced} />}
           {state.users.map((user) => {
             const seat = layout.seats.get(user.username);
             if (!seat) return null;

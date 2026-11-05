@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ambience, DAY, defaultSun, mixColor, previewTime } from './ambience.ts';
+import { ambience, CLEAR, conditions, DAY, defaultSun, mixColor, PREVIEW_WEATHER, previewTime } from './ambience.ts';
 
 // 5 to 7 November 2026 in Hanoi (UTC+7): sunrise about 06:00, sunset about 17:20.
 const SUN = [
@@ -80,4 +80,46 @@ test('previews jump to named times of day or a clock time', () => {
   const sun = defaultSun(now);
   assert.equal(new Date(previewTime('dawn', sun, now)!).getHours(), 6);
   assert.equal(ambience({ isDay: true, sun }, previewTime('20:00', sun, now)!).phase, 'night');
+});
+
+test('every group of weather codes shows its own weather', () => {
+  const at = (code: number) => conditions({ isDay: true, code });
+  assert.deepEqual(at(0), CLEAR);
+  assert.ok(at(1).clouds < at(2).clouds && at(2).clouds < at(3).clouds, 'more cloud from clear to overcast');
+  assert.ok(at(45).fog > 0.5 && at(48).fog > at(45).fog);
+  for (const code of [51, 53, 55, 56, 57]) assert.equal(at(code).precipitation, 'drizzle', String(code));
+  for (const code of [61, 63, 65, 66, 67, 80, 81, 82]) assert.equal(at(code).precipitation, 'rain', String(code));
+  for (const code of [71, 73, 75, 77, 85, 86]) assert.equal(at(code).precipitation, 'snow', String(code));
+  for (const code of [95, 96, 99]) assert.ok(at(code).storm && at(code).precipitation === 'rain', String(code));
+  assert.ok(at(61).intensity < at(63).intensity && at(63).intensity < at(65).intensity, 'heavier rain codes rain harder');
+  assert.deepEqual(conditions(null), CLEAR);
+  assert.deepEqual(conditions({ isDay: true }), CLEAR, 'no code: nothing to show');
+});
+
+test('cloud cover, rain amount and wind fine-tune the weather', () => {
+  assert.equal(conditions({ isDay: true, code: 2, cloudCover: 30 }).clouds, 0.3);
+  assert.equal(conditions({ isDay: true, code: 63, cloudCover: 30 }).clouds, 0.9, 'rain clouds stay heavy');
+  assert.equal(conditions({ isDay: true, code: 61, precipitation: 12 }).intensity, 1);
+  assert.equal(conditions({ isDay: true, code: 0, precipitation: 3 }).precipitation, 'none');
+  assert.equal(conditions({ isDay: true, code: 63, windSpeed: 20 }).wind, 0.5);
+  assert.equal(conditions({ isDay: true, code: 63, windSpeed: 90 }).wind, 1);
+});
+
+test('a clear midday still looks exactly as before, and bad weather greys the sky', () => {
+  assert.deepEqual(ambience({ ...weather, code: 0, cloudCover: 0 }, hanoi('12:00')), DAY);
+  const rainy = ambience({ ...weather, code: 63 }, hanoi('12:00'));
+  assert.equal(rainy.daylight, 1, 'rain leaves the time of day alone');
+  assert.equal(rainy.weather.precipitation, 'rain');
+  assert.notEqual(rainy.sky.top, DAY.sky.top);
+  assert.equal(rainy.lamps, 0, 'ordinary rain leaves the lamps off by day');
+  assert.ok(ambience({ ...weather, code: 95 }, hanoi('12:00')).lamps > 0, 'a dark storm turns them on a little');
+  assert.equal(ambience({ ...weather, code: 63 }, hanoi('22:00')).lamps, 1);
+});
+
+test('weather previews name real weather codes', () => {
+  for (const [name, code] of Object.entries(PREVIEW_WEATHER)) {
+    const shown = conditions({ isDay: true, code });
+    if (name === 'clear') assert.deepEqual(shown, CLEAR);
+    else assert.notDeepEqual(shown, CLEAR, name);
+  }
 });

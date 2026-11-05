@@ -42,6 +42,12 @@ export interface Weather {
   updatedAt: string;
   /** Yesterday, today and tomorrow at the office, so the map can light the town. Missing in polar day or night. */
   sun?: SunTimes[];
+  /** Share of the sky covered by cloud, 0 to 100. */
+  cloudCover?: number;
+  /** Rain and snow in the last hour, in mm. */
+  precipitation?: number;
+  /** Wind at 10 m, in km/h. */
+  windSpeed?: number;
 }
 
 export interface TeamState {

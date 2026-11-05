@@ -245,7 +245,7 @@ function fakeWeatherService() {
       });
     }
     return jsonReply({
-      current: { temperature_2m: service.temperature, weather_code: 2, is_day: 0 },
+      current: { temperature_2m: service.temperature, weather_code: 2, is_day: 0, cloud_cover: 64, precipitation: 0.4, wind_speed_10m: null },
       // 5 to 7 November 2026 in Hanoi: about 06:00 and 17:20 local time.
       daily: { sunrise: [1793833200, 1793919600, 1794006060], sunset: [1793874000, 1793960340, 1794046680] },
     });
@@ -309,6 +309,10 @@ test('setting the office location fetches its weather, and clearing removes it',
   assert.ok(service.calls.at(-1)!.includes('daily=sunrise%2Csunset'));
   assert.deepEqual(weather.sun[1], { rise: '2026-11-05T23:00:00.000Z', set: '2026-11-06T10:19:00.000Z' });
   assert.equal(weather.sun.length, 3);
+  assert.ok(service.calls.at(-1)!.includes('cloud_cover%2Cprecipitation%2Cwind_speed_10m'));
+  assert.equal(weather.cloudCover, 64);
+  assert.equal(weather.precipitation, 0.4);
+  assert.equal('windSpeed' in weather, false, 'missing details are left out');
 
   await api('PATCH', '/api/admin/settings', { office: null }, ADMIN);
   const cleared = (await api('GET', '/api/state')).json;

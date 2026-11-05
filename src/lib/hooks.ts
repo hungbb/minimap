@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { TeamState, Weather } from '../../shared/types.ts';
-import { ambience, defaultSun, previewTime, type Ambience } from './ambience.ts';
+import { ambience, defaultSun, PREVIEW_WEATHER, previewTime, type Ambience, type WeatherInput } from './ambience.ts';
 import { subscribe } from './api.ts';
 
 export function useTeamState(): { state: TeamState | null; online: boolean } {
@@ -71,18 +71,26 @@ export function useReducedMotion(): boolean {
 
 /**
  * How the town should look now, from the office's weather. Checked every minute so
- * the light changes gradually. `?time=dusk` (or dawn, day, night, or a local HH:MM)
- * previews another time of day on this screen only.
+ * the light changes gradually. Previews on this screen only: `?time=dusk` (or dawn,
+ * day, night, or a local HH:MM) and `?weather=rain` (see PREVIEW_WEATHER).
  */
 export function useAmbience(weather: Weather | null): Ambience {
-  const [preview] = useState(() => new URLSearchParams(location.search).get('time'));
+  const [preview] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    const code = PREVIEW_WEATHER[params.get('weather') ?? ''];
+    return { time: params.get('time'), code };
+  });
   const now = useNow(60_000);
   const minute = Math.floor(now.getTime() / 60_000);
   return useMemo(() => {
     const at = new Date(minute * 60_000);
-    if (!preview) return ambience(weather, at);
-    const sun = weather?.sun?.length ? weather.sun : defaultSun(at);
-    const shown = previewTime(preview, sun, at);
-    return shown ? ambience({ isDay: weather?.isDay ?? true, sun }, shown) : ambience(weather, at);
+    if (!preview.time && preview.code === undefined) return ambience(weather, at);
+    // A weather preview shows that weather alone, without the live cloud, rain and wind detail.
+    let shown: WeatherInput | null = weather;
+    if (preview.code !== undefined) shown = { isDay: weather?.isDay ?? true, sun: weather?.sun, code: preview.code };
+    if (!preview.time) return ambience(shown, at);
+    const sun = shown?.sun?.length ? shown.sun : defaultSun(at);
+    const time = previewTime(preview.time, sun, at);
+    return ambience({ isDay: shown?.isDay ?? true, ...shown, sun }, time ?? at);
   }, [weather, preview, minute]);
 }
