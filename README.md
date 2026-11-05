@@ -175,7 +175,7 @@ Set these on the Admin page. They apply straight away and are saved with the res
 
 Once the main office location is set, the 2D and 3D maps follow the time of day there, using the office's real sunrise and sunset. The town gets warm light around sunrise and sunset, and a starry sky at night with glowing street lamps and lit office windows. Names, statuses and characters stay as readable as in the daytime. In the middle of the day, and without an office location, the map looks just as it always has.
 
-To preview another time of day on one screen, add `?time=dawn`, `day`, `dusk`, `night` or a local time such as `?time=21:30` to the map's address (for example `/?mode=3d&time=dusk`). It only changes that screen. Without an office location, the preview uses a 06:00 sunrise and an 18:00 sunset.
+To preview another time of day on one screen, add `?time=dawn`, `day`, `dusk`, `night` or a time such as `?time=21:30` (in the time zone of the screen showing the map, not the office's) to the map's address (for example `/?mode=3d&time=dusk`). It only changes that screen. Without an office location, the preview uses a 06:00 sunrise and an 18:00 sunset.
 
 ## Settings
 
