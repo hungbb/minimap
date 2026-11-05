@@ -6,6 +6,7 @@ import { Badge, BadgeFigure, type SelectHandler } from '../components/Badge.tsx'
 import { Desk, Mochi, MochiSvg } from '../components/Mochi.tsx';
 import { useElementSize, useReducedMotion } from '../lib/hooks.ts';
 import { computeLayout, type MapLayout, type Seat, type Zone, type ZoneKind } from '../lib/layout.ts';
+import type { Ambience } from '../lib/ambience.ts';
 import { lookFor } from '../lib/look.ts';
 import { media, theme } from '../styles/theme.ts';
 import { DECOR, PARK_TREES, STREET_ART, Umbrella } from './decor.tsx';
@@ -64,6 +65,9 @@ const shade = css`
     mix-blend-mode: multiply;
     pointer-events: none;
   }
+
+  /* In the plain daytime look the tint is fully clear, so skip the blending altogether. */
+  [data-plain] &::after { display: none; }
 `;
 
 const INDOORS = css`
@@ -442,6 +446,11 @@ function Person({ user, seat, layout, scale, dimmed, selected, onSelect, umbrell
   );
 }
 
+/** The ordinary daytime look, with nothing to tint. */
+function isPlain(look: Ambience): boolean {
+  return look.daylight === 1 && look.warmth === 0 && look.weather.gloom === 0;
+}
+
 export default function Map2D({ state, isDimmed, selected, onSelect, look }: MapProps) {
   const fillRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
@@ -473,7 +482,14 @@ export default function Map2D({ state, isDimmed, selected, onSelect, look }: Map
   }
 
   return (
-    <MapFill data-map-root data-daylight={look.phase} data-windy={look.weather.wind > 0.2 || undefined} ref={fillRef} style={daylight}>
+    <MapFill
+      data-map-root
+      data-daylight={look.phase}
+      data-plain={isPlain(look) || undefined}
+      data-windy={look.weather.wind > 0.2 || undefined}
+      ref={fillRef}
+      style={daylight}
+    >
       <Sky />
       <Stars />
       {width > 0 && height > 0 && (

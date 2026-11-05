@@ -180,7 +180,7 @@ The map also shows the office's current weather: drifting clouds (with their sha
 
 Each screen can turn the effects off with the **Weather** button on the map's toolbar, which the browser remembers. The button shows when an office location is set and the setting above is on.
 
-To preview another time of day on one screen, add `?time=dawn`, `day`, `dusk`, `night` or a local time such as `?time=21:30` to the map's address (for example `/?mode=3d&time=dusk`). To preview weather, add `?weather=` with `clear`, `partly`, `windy`, `cloudy`, `fog`, `drizzle`, `rain`, `downpour`, `snow` or `storm`. Previews show even when the effects are turned off. They can be combined, as in `/?weather=storm&time=night`, and only change that screen. Without an office location, the preview uses a 06:00 sunrise and an 18:00 sunset.
+To preview another time of day on one screen, add `?time=dawn`, `day`, `dusk`, `night` or a time such as `?time=21:30` (in the time zone of the screen showing the map, not the office's) to the map's address (for example `/?mode=3d&time=dusk`). To preview weather, add `?weather=` with `clear`, `partly`, `windy`, `cloudy`, `fog`, `drizzle`, `rain`, `downpour`, `snow` or `storm`. Previews show even when the effects are turned off. They can be combined, as in `/?weather=storm&time=night`, and only change that screen. Without an office location, the preview uses a 06:00 sunrise and an 18:00 sunset.
 
 ## Settings
 
