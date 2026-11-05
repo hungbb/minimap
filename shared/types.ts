@@ -27,6 +27,8 @@ export interface PublicSettings {
   publicUrl: string;
   clocks: Clock[];
   officeName: string;
+  /** Whether the map shows the office's daylight and weather. */
+  mapWeather: boolean;
 }
 
 /** When the sun rises and sets at the office on one day, as ISO instants. */

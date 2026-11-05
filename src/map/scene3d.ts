@@ -75,6 +75,8 @@ interface Character {
   goal: THREE.Vector3;
   zoneId: string;
   zoneKind: ZoneKind;
+  /** Held outdoors in the rain or snow. */
+  umbrella: THREE.Group;
   /** Where they may wander, or null when the room is too crowded to. */
   area: Box | null;
   /** travel: hurrying to a new room. walk: wandering. idle: standing still. */
@@ -122,6 +124,15 @@ const NOON = new THREE.Vector3(-34, 80, 44);
 const SUNRISE = new THREE.Vector3(-110, 18, 30);
 const SUNSET = new THREE.Vector3(70, 18, 30);
 const MOON = new THREE.Vector3(40, 90, 30);
+const UMBRELLA_COLOURS = [0xff8fb3, 0x8fc9ff, 0xffe27a, 0xb7a6ff, 0x9fe89a];
+
+/** Each person always carries the same colour of umbrella. */
+function umbrellaColour(username: string): number {
+  let hash = 0;
+  for (const ch of username) hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
+  return UMBRELLA_COLOURS[hash % UMBRELLA_COLOURS.length]!;
+}
+
 const LIGHT = {
   sun: '#fff4dc', warmSun: '#ffb27a', moon: '#a9b8ff',
   sky: '#ffffff', nightSky: '#6d7ad0',
@@ -365,8 +376,46 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     }
   }
 
+  // Snow on walls, roofs and trees, puddles on the road, umbrellas and swaying trees.
+  const snowMaterial = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: ramp });
+  const puddleMaterial = new THREE.MeshBasicMaterial({ color: 0xcfe0ff, transparent: true, opacity: 0, depthWrite: false });
+  let snowCaps: THREE.Mesh[] = [];
+  let trees: { tree: THREE.Group; phase: number }[] = [];
+
+  function addSnow(parent: THREE.Object3D, geometry: THREE.BufferGeometry, { x = 0, y = 0, z = 0, squash = 1, turn = 0 } = {}) {
+    const cap = mesh(geometry, snowMaterial, { x, y, z, shadow: false });
+    cap.scale.y = squash;
+    cap.rotation.y = turn;
+    cap.visible = weather.precipitation === 'snow';
+    parent.add(cap);
+    snowCaps.push(cap);
+  }
+
+  function makeUmbrella(colour: number) {
+    const umbrella = new THREE.Group();
+    umbrella.add(mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.2, 6), INK, { x: 0.8, y: 2.3, z: 0.3 }));
+    umbrella.add(mesh(new THREE.ConeGeometry(2, 0.9, 12), colour, { x: 0.8, y: 4.25, z: 0.3 }));
+    umbrella.add(mesh(new THREE.SphereGeometry(0.12, 8, 6), INK, { x: 0.8, y: 4.75, z: 0.3 }));
+    umbrella.rotation.z = -0.12;
+    umbrella.visible = false;
+    return umbrella;
+  }
+
+  function showWeatherDetails() {
+    const snowing = weather.precipitation === 'snow';
+    for (const cap of snowCaps) cap.visible = snowing;
+    const wet = weather.precipitation === 'rain' || weather.precipitation === 'drizzle';
+    puddleMaterial.opacity = wet ? 0.35 + weather.intensity * 0.35 : 0;
+    puddleMaterial.visible = wet;
+  }
+
   function animateWeather(dt: number, time: number) {
     placeClouds(time);
+    // People outdoors open their umbrellas.
+    const raining = weather.precipitation !== 'none';
+    for (const c of characters.values()) c.umbrella.visible = raining && (c.zoneKind === 'street' || c.zoneKind === 'off');
+    const sway = reducedMotion ? 0 : weather.wind;
+    for (const { tree, phase } of trees) tree.rotation.z = sway ? Math.sin(time * (1.1 + sway) + phase) * 0.05 * sway : 0;
     // A rare, soft brightening of the sky in a storm: never a strobe.
     let flash = 0;
     if (weather.storm && !reducedMotion) {
@@ -422,9 +471,16 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
 
   function addTree(parent: THREE.Group, x: number, z: number) {
     block(x, z, 1.2, 1.2);
-    parent.add(mesh(new THREE.CylinderGeometry(0.55, 0.75, 3, 8), 0xc99467, { x, y: 2.5, z }));
-    parent.add(mesh(new THREE.IcosahedronGeometry(2.5, 1), 0x63c96c, { x, y: 5.6, z }));
-    parent.add(mesh(new THREE.IcosahedronGeometry(1.7, 1), 0x7ad67f, { x: x + 1, y: 7, z: z + 0.4 }));
+    // Built around the foot of its trunk, so it sways from there in the wind.
+    const tree = new THREE.Group();
+    tree.position.set(x, 1, z);
+    tree.add(mesh(new THREE.CylinderGeometry(0.55, 0.75, 3, 8), 0xc99467, { y: 1.5 }));
+    tree.add(mesh(new THREE.IcosahedronGeometry(2.5, 1), 0x63c96c, { y: 4.6 }));
+    tree.add(mesh(new THREE.IcosahedronGeometry(1.7, 1), 0x7ad67f, { x: 1, y: 6, z: 0.4 }));
+    addSnow(tree, new THREE.IcosahedronGeometry(2.1, 1), { y: 6.1, squash: 0.45 });
+    addSnow(tree, new THREE.IcosahedronGeometry(1.4, 1), { x: 1, y: 7.1, z: 0.4, squash: 0.45 });
+    parent.add(tree);
+    trees.push({ tree, phase: x * 0.37 + z * 0.21 });
   }
 
   function addOffice(group: THREE.Group, z: Zone, c: Point) {
@@ -437,6 +493,8 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     const backWall = mesh(new THREE.BoxGeometry(z.w, WALL_H, 0.7), 0xfff4fa, { x: c.x, y: 1 + WALL_H / 2, z: c.z - z.h / 2 + 0.35 });
     const sideWall = mesh(new THREE.BoxGeometry(0.7, WALL_H, z.h), 0xf8ebff, { x: c.x - z.w / 2 + 0.35, y: 1 + WALL_H / 2, z: c.z });
     group.add(backWall, sideWall);
+    addSnow(group, new THREE.BoxGeometry(z.w + 0.3, 0.4, 1.1), { x: c.x, y: 1 + WALL_H + 0.2, z: c.z - z.h / 2 + 0.35 });
+    addSnow(group, new THREE.BoxGeometry(1.1, 0.4, z.h), { x: c.x - z.w / 2 + 0.35, y: 1 + WALL_H + 0.2, z: c.z });
 
     // Windows along the back wall.
     const windows = Math.max(1, Math.floor(z.w / 11));
@@ -458,6 +516,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     const roof = mesh(new THREE.ConeGeometry(6.8, 3.8, 4), 0xff8fb3, { x: hx, y: 7.5, z: hz });
     roof.rotation.y = Math.PI / 4;
     group.add(roof);
+    addSnow(group, new THREE.ConeGeometry(3.6, 2, 4), { x: hx, y: 8.5, z: hz, turn: Math.PI / 4 });
     group.add(mesh(new THREE.BoxGeometry(1.8, 3, 0.2), 0xb7a6ff, { x: hx, y: 2.5, z: hz + 3.55, shadow: false }));
     // Lights up at night like the office windows.
     group.add(mesh(new THREE.BoxGeometry(1.6, 1.4, 0.2), windowGlass, { x: hx + 2.4, y: 3.6, z: hz + 3.55, shadow: false }));
@@ -528,6 +587,15 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
       group.add(mesh(new THREE.BoxGeometry(4, 0.06, 0.7), paint, { x: crosswalkX, y: 1.04, z: stripeZ, shadow: false }));
     }
 
+    // Puddles, which shine while it rains.
+    for (const [px, pz, size] of [[-0.16, -0.25, 3.2], [0.08, 0.3, 2.4], [0.27, -0.1, 2.8]] as const) {
+      const puddle = mesh(new THREE.CircleGeometry(1, 20), puddleMaterial, { x: width * px, y: 1.02, z: roadZ + roadDepth * pz, shadow: false });
+      puddle.rotation.x = -Math.PI / 2;
+      puddle.scale.set(size, size * 0.45, 1);
+      puddle.receiveShadow = false;
+      group.add(puddle);
+    }
+
     addLampPost(group, -width * 0.32, pavementZ);
     addLampPost(group, width * 0.24, pavementZ);
     addCar(group, width * 0.4, roadZ + 1);
@@ -542,6 +610,8 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
   function buildWorld() {
     disposeGroup(world);
     nightLights = [];
+    snowCaps = [];
+    trees = [];
     zoneLabels.clear();
     scenery = [];
     center = { x: layout.width / 2, z: layout.height / 2 };
@@ -611,16 +681,19 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
   function disposeGroup(group: THREE.Group) {
     for (const child of [...group.children]) {
       group.remove(child);
-      if (child instanceof THREE.Mesh) {
-        child.geometry.dispose();
-        // Tiled floors have their own material and texture; the rest are shared.
-        const material = child.material as THREE.MeshToonMaterial;
-        if (material.map) {
-          material.map.dispose();
-          material.dispose();
+      // Trees are groups of their own, so look inside everything.
+      child.traverse((node) => {
+        if (node instanceof THREE.Mesh) {
+          node.geometry.dispose();
+          // Tiled floors have their own material and texture; the rest are shared.
+          const material = node.material as THREE.MeshToonMaterial;
+          if (material.map) {
+            material.map.dispose();
+            material.dispose();
+          }
         }
-      }
-      if (child instanceof CSS2DObject) child.element.remove();
+        if (node instanceof CSS2DObject) node.element.remove();
+      });
     }
   }
 
@@ -643,9 +716,12 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     label.position.set(0, 3.3, 0);
     label.center.set(0.5, 1);
     group.add(label);
+    const umbrella = makeUmbrella(umbrellaColour(user.username));
+    group.add(umbrella);
     scene.add(group);
 
     return {
+      umbrella,
       username: user.username,
       designKey: JSON.stringify(user.look),
       bodyMaterial,
@@ -688,6 +764,11 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     scene.remove(character.group);
     character.label.element.remove();
     clearBody(character);
+    character.umbrella.traverse((node) => {
+      if (!(node instanceof THREE.Mesh)) return;
+      node.geometry.dispose();
+      (node.userData.fadeMaterial as THREE.Material | undefined)?.dispose();
+    });
   }
 
   // Someone saved a new look, so swap it in without moving them.
@@ -1091,6 +1172,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
     applyPreset: (id) => applyPreset(id),
     setAmbience({ daylight, warmth, phase, lamps, sky: skyColours, weather: now }) {
       weather = now;
+      showWeatherDetails();
       sky.color.set(mixColor(LIGHT.nightSky, LIGHT.sky, daylight));
       sky.groundColor.set(mixColor(LIGHT.nightGround, LIGHT.ground, daylight));
       skyLight = 1.4 + 0.5 * daylight;
@@ -1165,6 +1247,8 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera }: SceneOpti
       }
       puff.dispose();
       shadowOnly.dispose();
+      snowMaterial.dispose();
+      puddleMaterial.dispose();
       ramp.dispose();
       renderer.dispose();
       renderer.forceContextLoss(); // Browsers allow only a few live 3D contexts.

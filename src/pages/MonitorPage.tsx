@@ -6,7 +6,7 @@ import { DetailCard } from '../components/DetailCard.tsx';
 import { InfoPanel } from '../components/InfoPanel.tsx';
 import { Mochi } from '../components/Mochi.tsx';
 import { RandomPicker } from '../components/RandomPicker.tsx';
-import { useTeamState } from '../lib/hooks.ts';
+import { useAmbience, useTeamState } from '../lib/hooks.ts';
 import { supportsWebGL } from '../lib/webgl.ts';
 import { isNotWorking, placeGroup, placeName, type PlaceGroup } from '../lib/layout.ts';
 import Map2D from '../map/Map2D.tsx';
@@ -18,6 +18,7 @@ import { Button, Count, Segmented, Wordmark } from '../styles/ui.ts';
 const Map3D = lazy(() => import('../map/Map3D.tsx'));
 
 const MODE_KEY = 'minimap.mode';
+const WEATHER_KEY = 'minimap.weather';
 
 type Filter = 'all' | 'office' | 'wfh' | 'notWorking';
 type Mode = '2d' | '3d';
@@ -257,17 +258,17 @@ const RowWhere = styled.span`
   text-overflow: ellipsis;
 `;
 
-function readSavedMode(): string | null {
+function readSaved(key: string): string | null {
   try {
-    return localStorage.getItem(MODE_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function saveMode(value: Mode): void {
+function save(key: string, value: string): void {
   try {
-    localStorage.setItem(MODE_KEY, value);
+    localStorage.setItem(key, value);
   } catch {}
 }
 
@@ -348,12 +349,16 @@ export function MonitorPage() {
   const has3D = useMemo(supportsWebGL, []);
   const [filter, setFilter] = useState<Filter>('all');
   const [mode, setMode] = useState<Mode>(() => {
-    const requested = new URLSearchParams(location.search).get('mode') || readSavedMode();
+    const requested = new URLSearchParams(location.search).get('mode') || readSaved(MODE_KEY);
     return requested === '3d' && has3D ? '3d' : '2d';
   });
   const [selection, setSelection] = useState<{ username: string; anchor: HTMLElement } | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Each screen can turn the town's daylight and weather off, if the admin has them on.
+  const [weatherOn, setWeatherOn] = useState(() => readSaved(WEATHER_KEY) !== 'off');
+  const weatherAllowed = Boolean(state?.settings.officeName) && state?.settings.mapWeather !== false;
+  const look = useAmbience(state?.weather ?? null, weatherAllowed && weatherOn);
 
   useEffect(() => {
     document.title = 'Team Minimap';
@@ -385,7 +390,7 @@ export function MonitorPage() {
   }
 
   function chooseMode(next: Mode) {
-    saveMode(next);
+    save(MODE_KEY, next);
     closeCard();
     setMode(next);
   }
@@ -417,7 +422,7 @@ export function MonitorPage() {
     if (state && selection && !selectedUser) closeCard();
   }, [state, selection, selectedUser, closeCard]);
 
-  const mapProps = state && { state, isDimmed, selected: selection?.username ?? null, focus, onSelect: select };
+  const mapProps = state && { state, isDimmed, selected: selection?.username ?? null, focus, onSelect: select, look };
 
   return (
     <Page>
@@ -442,6 +447,21 @@ export function MonitorPage() {
             3D
           </button>
         </Segmented>
+        {weatherAllowed && (
+          <Segmented role="group" aria-label="Town">
+            <button
+              type="button"
+              aria-pressed={weatherOn}
+              title="Show the office's daylight and weather on the map"
+              onClick={() => {
+                save(WEATHER_KEY, weatherOn ? 'off' : 'on');
+                setWeatherOn(!weatherOn);
+              }}
+            >
+              Weather
+            </button>
+          </Segmented>
+        )}
         <TopBarSpacer />
         <Button type="button" disabled={!state?.users.length} onClick={() => { closeCard(); setPickerOpen(true); }}>
           Random picker

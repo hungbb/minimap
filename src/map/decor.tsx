@@ -73,9 +73,9 @@ const Car = (
 
 /** Trees for the town park, in percentages of the park. */
 export const PARK_TREES = [
-  { art: Tree, left: 8, bottom: 10, width: 14 },
-  { art: Tree, left: 42, bottom: 22, width: 12 },
-  { art: Tree, right: 10, bottom: 8, width: 15 },
+  { art: Tree, left: 8, bottom: 10, width: 14, sway: true },
+  { art: Tree, left: 42, bottom: 22, width: 12, sway: true },
+  { art: Tree, right: 10, bottom: 8, width: 15, sway: true },
 ];
 
 export interface DecorItem {
@@ -87,6 +87,8 @@ export interface DecorItem {
   bottom?: number;
   /** Large items are hidden once a room fills up, so they don't sit behind people. */
   large?: boolean;
+  /** Sways in the wind. */
+  sway?: boolean;
 }
 
 // Positions are percentages of the zone, chosen to stay clear of the title tab.
@@ -98,13 +100,24 @@ export const DECOR: Record<ZoneKind, DecorItem[]> = {
   ],
   wfh: [
     { art: House, right: 3, top: 5, width: 25, large: true },
-    { art: Tree, left: 3, bottom: 5, width: 11 },
+    { art: Tree, left: 3, bottom: 5, width: 11, sway: true },
   ],
   off: [{ art: Parasol, left: 6, top: 22, width: 17 }],
   lobby: [{ art: Mat, right: 3, bottom: 12, width: 13, large: true }],
   // The street lines its things up with its pavement and road instead: see STREET_ART.
   street: [],
 };
+
+/** Held by people outdoors in the rain or snow. Drawn behind them, so the canopy peeks over their head. */
+export function Umbrella({ colour }: { colour: string }) {
+  return (
+    <svg viewBox="0 0 64 60" width="100%" height="100%">
+      <path d="M33 22v28c0 5-7 5-7 0" fill="none" stroke={INK} strokeWidth="3" strokeLinecap="round" />
+      <path d="M4 24C6 10 18 3 32 3s26 7 28 21c-5-4-10-4-14 0-4-4-10-4-14 0-4-4-10-4-14 0-4-4-9-4-14 0Z" fill={colour} {...joined} />
+      <path d="M32 3v3" stroke={INK} strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 /** The street's own art. Map2D stands the lamps on the curb and drives the car in the road. */
 export const STREET_ART = { lamp: Lamp, car: Car };

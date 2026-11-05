@@ -33,6 +33,7 @@ interface Settings {
   publicUrl: string;
   clocks: Clock[];
   office: OfficeLocation | null;
+  mapWeather: boolean;
 }
 
 export interface Data {
@@ -116,6 +117,7 @@ const DEFAULT_SETTINGS: Settings = {
     { label: 'UTC', timeZone: 'UTC' },
   ],
   office: null,
+  mapWeather: true,
 };
 
 export class ApiError extends Error {
@@ -178,6 +180,11 @@ export function latestResetDate(now: Date, resetAt: string, timeZone?: string): 
 }
 
 // ---- Settings validation ------------------------------------------------
+
+function cleanSwitch(value: unknown, name: string): boolean {
+  if (typeof value !== 'boolean') throw new ApiError(400, `${name} must be on or off.`);
+  return value;
+}
 
 function cleanPublicUrl(value: unknown): string {
   const url = String(value ?? '').trim();
@@ -303,6 +310,7 @@ function checkBackup(value: unknown): Partial<Data> {
   if ('publicUrl' in saved) settings.publicUrl = cleanPublicUrl(saved.publicUrl);
   if ('clocks' in saved) settings.clocks = cleanClocks(saved.clocks);
   if ('office' in saved) settings.office = cleanOffice(saved.office);
+  if ('mapWeather' in saved) settings.mapWeather = saved.mapWeather !== false;
 
   const lastResetDate = value.lastResetDate;
   if (lastResetDate !== undefined && (typeof lastResetDate !== 'string' || !/^(\d{4}-\d{2}-\d{2})?$/.test(lastResetDate))) {
@@ -346,10 +354,10 @@ export function createCore({
   }
 
   function publicState(): TeamState {
-    const { publicUrl, clocks, office } = data.settings;
+    const { publicUrl, clocks, office, mapWeather } = data.settings;
     return {
       places: data.places,
-      settings: { publicUrl, clocks, officeName: office?.name || '' },
+      settings: { publicUrl, clocks, officeName: office?.name || '', mapWeather },
       weather,
       users: data.users.map((u) => ({
         username: u.username,
@@ -574,6 +582,7 @@ export function createCore({
       if ('publicUrl' in body) next.publicUrl = cleanPublicUrl(body.publicUrl);
       if ('clocks' in body) next.clocks = cleanClocks(body.clocks);
       if ('office' in body) next.office = cleanOffice(body.office);
+      if ('mapWeather' in body) next.mapWeather = cleanSwitch(body.mapWeather, 'Daylight and weather on the map');
       Object.assign(data.settings, next);
       if ('office' in next) weather = null;
       commit();

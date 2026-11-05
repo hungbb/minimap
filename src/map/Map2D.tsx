@@ -4,11 +4,11 @@ import styled, { css, keyframes, type RuleSet } from 'styled-components';
 import type { TeamUser } from '../../shared/types.ts';
 import { Badge, BadgeFigure, type SelectHandler } from '../components/Badge.tsx';
 import { Desk, Mochi, MochiSvg } from '../components/Mochi.tsx';
-import { useAmbience, useElementSize, useReducedMotion } from '../lib/hooks.ts';
+import { useElementSize, useReducedMotion } from '../lib/hooks.ts';
 import { computeLayout, type MapLayout, type Seat, type Zone, type ZoneKind } from '../lib/layout.ts';
 import { lookFor } from '../lib/look.ts';
 import { media, theme } from '../styles/theme.ts';
-import { DECOR, PARK_TREES, STREET_ART } from './decor.tsx';
+import { DECOR, PARK_TREES, STREET_ART, Umbrella } from './decor.tsx';
 import type { MapProps } from './types.ts';
 import { hasWeather, Weather2D } from './Weather2D.tsx';
 
@@ -171,15 +171,69 @@ const RoomCount = styled.span`
   font-weight: 500;
 `;
 
+const sway = keyframes`
+  from { rotate: calc(var(--wind) * -5deg); }
+  to { rotate: calc(var(--wind) * 5deg); }
+`;
+
 const DecorBox = styled.div<{ $hidden: boolean }>`
   position: absolute;
   /* Rooms change shape with their people, so furniture can't outgrow a wide, short room. */
   max-width: 90px;
   max-height: 62%;
   pointer-events: none;
+  transform-origin: 50% 100%;
+
+  [data-windy] &[data-sway] { animation: ${sway} calc(2.4s - var(--wind) * 1s) ease-in-out infinite alternate; }
+
+  ${media.reducedMotion} { animation: none !important; }
 
   ${({ $hidden }) => $hidden && 'display: none;'}
 `;
+
+/** Snow settled along the top of an area. */
+const SnowCap = styled.div`
+  position: absolute;
+  top: -6px;
+  left: 10px;
+  right: 10px;
+  height: 13px;
+  border-radius: 8px 8px 0 0;
+  background:
+    radial-gradient(circle at 8px 5px, #fff 6.5px, transparent 7px) 0 0 / 16px 13px repeat-x,
+    linear-gradient(#fff, #fff) 0 0 / 100% 6px no-repeat;
+  opacity: var(--snow);
+  filter: drop-shadow(0 1px 0 rgb(42 38 87 / .25));
+  pointer-events: none;
+`;
+
+/** A puddle on the road, shining while it rains. */
+const Puddle = styled.span`
+  position: absolute;
+  aspect-ratio: 3;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(205 225 255 / .7), rgb(160 190 235 / .45) 65%, transparent);
+  opacity: var(--wet);
+  pointer-events: none;
+`;
+
+// Held over one shoulder, beside the status bubble above the head, and behind everything
+// else in the person's badge, so their status and name always stay on top.
+const UmbrellaBox = styled.span`
+  position: absolute;
+  z-index: -1;
+  left: 58%;
+  top: -14px;
+  width: 50px;
+  transform: rotate(16deg);
+  transform-origin: 30% 100%;
+  aspect-ratio: 64 / 60;
+  pointer-events: none;
+
+  svg { display: block; }
+`;
+
+const UMBRELLA_COLOURS = ['#ff8fb3', '#8fc9ff', '#ffe27a', '#b7a6ff', '#9fe89a'];
 
 const StreetPiece = styled.div`
   position: absolute;
@@ -222,6 +276,9 @@ function StreetDecor() {
       <StreetPiece style={{ ...lamp, left: 'max(16%, 150px)' }}><LampGlow />{STREET_ART.lamp}</StreetPiece>
       <StreetPiece style={{ ...lamp, right: '24%' }}><LampGlow />{STREET_ART.lamp}</StreetPiece>
       <Crosswalk />
+      <Puddle style={{ left: '22%', bottom: '14%', width: 'clamp(30px, 8%, 70px)' }} />
+      <Puddle style={{ left: '61%', bottom: '38%', width: 'clamp(24px, 6%, 54px)' }} />
+      <Puddle style={{ left: '76%', bottom: '10%', width: 'clamp(28px, 7%, 62px)' }} />
       <StreetPiece style={{ right: '2%', bottom: '8%', height: `min(${(100 - PAVEMENT) * 0.5}%, 42px)`, aspectRatio: '90 / 50' }}>
         {STREET_ART.car}
       </StreetPiece>
@@ -293,7 +350,7 @@ function percent(part: number, whole: number): string {
   return `${(part / whole) * 100}%`;
 }
 
-function ZoneRoom({ zone, layout, busy }: { zone: Zone; layout: MapLayout; busy: boolean }) {
+function ZoneRoom({ zone, layout, busy, snowy }: { zone: Zone; layout: MapLayout; busy: boolean; snowy: boolean }) {
   const style: CSSProperties = {
     left: percent(zone.x, layout.width),
     top: percent(zone.y, layout.height),
@@ -306,9 +363,11 @@ function ZoneRoom({ zone, layout, busy }: { zone: Zone; layout: MapLayout; busy:
         <RoomName>{zone.name}</RoomName>
         <RoomCount>{zone.count}</RoomCount>
       </RoomTitle>
-      {DECOR[zone.kind].map(({ art, width, left, right, top, bottom, large }, i) => (
+      {snowy && <SnowCap />}
+      {DECOR[zone.kind].map(({ art, width, left, right, top, bottom, large, sway: sways }, i) => (
         <DecorBox
           key={i}
+          data-sway={sways || undefined}
           $hidden={Boolean(large && busy)}
           style={{
             width: `${width}%`,
@@ -335,9 +394,11 @@ interface PersonProps {
   dimmed: boolean;
   selected: boolean;
   onSelect: SelectHandler;
+  /** Outdoors in the rain or snow. */
+  umbrella: boolean;
 }
 
-function Person({ user, seat, layout, scale, dimmed, selected, onSelect }: PersonProps) {
+function Person({ user, seat, layout, scale, dimmed, selected, onSelect, umbrella }: PersonProps) {
   const zoneId = seat.zone.id;
   const previousZone = useRef(zoneId);
   const [moving, setMoving] = useState(false);
@@ -367,6 +428,11 @@ function Person({ user, seat, layout, scale, dimmed, selected, onSelect }: Perso
         onSelect={onSelect}
         figure={
           <BadgeFigure $selected={selected}>
+            {umbrella && (
+              <UmbrellaBox>
+                <Umbrella colour={UMBRELLA_COLOURS[lookFor(user.username).phase % UMBRELLA_COLOURS.length]!} />
+              </UmbrellaBox>
+            )}
             <Mochi user={user} />
             {seat.zone.kind === 'office' && <Desk />}
           </BadgeFigure>
@@ -376,9 +442,8 @@ function Person({ user, seat, layout, scale, dimmed, selected, onSelect }: Perso
   );
 }
 
-export default function Map2D({ state, isDimmed, selected, onSelect }: MapProps) {
+export default function Map2D({ state, isDimmed, selected, onSelect, look }: MapProps) {
   const fillRef = useRef<HTMLDivElement>(null);
-  const look = useAmbience(state.weather);
   const reduced = useReducedMotion();
   const daylight = {
     '--night': 1 - look.daylight,
@@ -388,7 +453,12 @@ export default function Map2D({ state, isDimmed, selected, onSelect }: MapProps)
     '--sky-bottom': look.sky.bottom,
     '--gloom': look.weather.gloom,
     '--clouds': look.weather.clouds,
+    '--wind': look.weather.wind,
+    '--wet': look.weather.precipitation === 'rain' || look.weather.precipitation === 'drizzle' ? look.weather.intensity : 0,
+    '--snow': look.weather.precipitation === 'snow' ? 0.5 + look.weather.intensity * 0.5 : 0,
   } as CSSProperties;
+  const snowy = look.weather.precipitation === 'snow';
+  const wet = look.weather.precipitation !== 'none';
   const { width, height } = useElementSize(fillRef);
   const portrait = height > 0 && width / height < 0.95;
   const layout = useMemo(() => computeLayout(state.places, state.users, { portrait }), [state.places, state.users, portrait]);
@@ -403,7 +473,7 @@ export default function Map2D({ state, isDimmed, selected, onSelect }: MapProps)
   }
 
   return (
-    <MapFill data-map-root data-daylight={look.phase} ref={fillRef} style={daylight}>
+    <MapFill data-map-root data-daylight={look.phase} data-windy={look.weather.wind > 0.2 || undefined} ref={fillRef} style={daylight}>
       <Sky />
       <Stars />
       {width > 0 && height > 0 && (
@@ -418,9 +488,11 @@ export default function Map2D({ state, isDimmed, selected, onSelect }: MapProps)
                 height: percent(layout.park.h, layout.height),
               }}
             >
+              {snowy && <SnowCap />}
               {PARK_TREES.map(({ art, width: treeWidth, left, right, bottom }, i) => (
                 <DecorBox
                   key={i}
+                  data-sway
                   $hidden={false}
                   style={{
                     width: `${treeWidth}%`,
@@ -436,7 +508,7 @@ export default function Map2D({ state, isDimmed, selected, onSelect }: MapProps)
             </Park>
           )}
           {layout.zones.map((zone) => (
-            <ZoneRoom key={zone.id} zone={zone} layout={layout} busy={isBusy(zone)} />
+            <ZoneRoom key={zone.id} zone={zone} layout={layout} busy={isBusy(zone)} snowy={snowy} />
           ))}
           {hasWeather(look) && <Weather2D look={look} reduced={reduced} />}
           {state.users.map((user) => {
@@ -452,6 +524,7 @@ export default function Map2D({ state, isDimmed, selected, onSelect }: MapProps)
                 dimmed={isDimmed(user)}
                 selected={selected === user.username}
                 onSelect={onSelect}
+                umbrella={wet && (seat.zone.kind === 'street' || seat.zone.kind === 'off')}
               />
             );
           })}

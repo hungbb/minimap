@@ -284,10 +284,28 @@ function ClocksForm({ value, call, run }: { value: Clock[]; call: AdminCall; run
   );
 }
 
-function OfficeForm({ officeName, call, run }: { officeName: string; call: AdminCall; run: Runner }) {
+const Switch = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  cursor: pointer;
+
+  input { width: 18px; height: 18px; margin: 0; accent-color: ${theme.ink}; }
+`;
+
+function OfficeForm({ officeName, mapWeather, call, run }: { officeName: string; mapWeather: boolean; call: AdminCall; run: Runner }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<OfficeLocation[]>([]);
   const [message, showMessage] = useMessage();
+  // Shows the new choice straight away, while it saves.
+  const [saving, setSaving] = useState<boolean | null>(null);
+
+  async function chooseMapWeather(on: boolean) {
+    setSaving(on);
+    await run(() => call('PATCH', '/api/admin/settings', { mapWeather: on }), on ? 'Daylight and weather are on' : 'Daylight and weather are off', showMessage);
+    setSaving(null);
+  }
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -342,6 +360,15 @@ function OfficeForm({ officeName, call, run }: { officeName: string; call: Admin
           ))}
         </Chips>
       )}
+      <Switch>
+        <input
+          type="checkbox"
+          checked={saving ?? mapWeather}
+          disabled={saving !== null}
+          onChange={(event) => void chooseMapWeather(event.target.checked)}
+        />
+        Show the office's daylight and weather on the map
+      </Switch>
       <StatusLine message={message} />
     </StackPanel>
   );
@@ -420,7 +447,7 @@ function AdminPanels({ call, run }: { call: AdminCall; run: Runner }) {
       <TeamPanel users={state.users} call={call} run={run} />
       <AddressForm value={settings.publicUrl} call={call} run={run} />
       <ClocksForm value={settings.clocks} call={call} run={run} />
-      <OfficeForm officeName={settings.officeName} call={call} run={run} />
+      <OfficeForm officeName={settings.officeName} mapWeather={settings.mapWeather} call={call} run={run} />
       <BackupPanel call={call} run={run} />
     </div>
   );

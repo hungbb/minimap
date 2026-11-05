@@ -90,7 +90,7 @@ test('every group of weather codes shows its own weather', () => {
   for (const code of [51, 53, 55, 56, 57]) assert.equal(at(code).precipitation, 'drizzle', String(code));
   for (const code of [61, 63, 65, 66, 67, 80, 81, 82]) assert.equal(at(code).precipitation, 'rain', String(code));
   for (const code of [71, 73, 75, 77, 85, 86]) assert.equal(at(code).precipitation, 'snow', String(code));
-  for (const code of [95, 96, 99]) assert.ok(at(code).storm && at(code).precipitation === 'rain', String(code));
+  for (const code of [95, 96, 99]) assert.ok(at(code).storm && at(code).precipitation === 'rain' && at(code).wind > 0, String(code));
   assert.ok(at(61).intensity < at(63).intensity && at(63).intensity < at(65).intensity, 'heavier rain codes rain harder');
   assert.deepEqual(conditions(null), CLEAR);
   assert.deepEqual(conditions({ isDay: true }), CLEAR, 'no code: nothing to show');
@@ -103,6 +103,7 @@ test('cloud cover, rain amount and wind fine-tune the weather', () => {
   assert.equal(conditions({ isDay: true, code: 0, precipitation: 3 }).precipitation, 'none');
   assert.equal(conditions({ isDay: true, code: 63, windSpeed: 20 }).wind, 0.5);
   assert.equal(conditions({ isDay: true, code: 63, windSpeed: 90 }).wind, 1);
+  assert.equal(conditions({ isDay: true, code: 95, windSpeed: 4 }).wind, 0.1, 'a measured wind beats the guess for storms');
 });
 
 test('a clear midday still looks exactly as before, and bad weather greys the sky', () => {
@@ -117,8 +118,8 @@ test('a clear midday still looks exactly as before, and bad weather greys the sk
 });
 
 test('weather previews name real weather codes', () => {
-  for (const [name, code] of Object.entries(PREVIEW_WEATHER)) {
-    const shown = conditions({ isDay: true, code });
+  for (const [name, preview] of Object.entries(PREVIEW_WEATHER)) {
+    const shown = conditions({ isDay: true, ...preview });
     if (name === 'clear') assert.deepEqual(shown, CLEAR);
     else assert.notDeepEqual(shown, CLEAR, name);
   }

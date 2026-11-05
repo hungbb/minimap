@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import styled, { css } from 'styled-components';
 import { Badge, BadgeName } from '../components/Badge.tsx';
-import { useAmbience, useReducedMotion } from '../lib/hooks.ts';
+import { useReducedMotion } from '../lib/hooks.ts';
 import { media, theme } from '../styles/theme.ts';
 import { Button } from '../styles/ui.ts';
 import { createScene3D, type CameraState, type Scene3D, type ZoneLabelSlot } from './scene3d.ts';
@@ -109,7 +109,7 @@ const CameraHint = styled.p`
   ${media.phone} { display: none; }
 `;
 
-export default function Map3D({ state, isDimmed, selected, focus, onSelect }: MapProps) {
+export default function Map3D({ state, isDimmed, selected, focus, onSelect, look }: MapProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<Scene3D | null>(null);
   const [personLabels, setPersonLabels] = useState<ReadonlyMap<string, HTMLElement>>(new Map());
@@ -117,7 +117,6 @@ export default function Map3D({ state, isDimmed, selected, focus, onSelect }: Ma
   const [camera, setCamera] = useState<CameraState>({ presets: [], active: 'overview' });
   const [namesOn, setNamesOn] = useState(true);
   const [wanderOn, setWanderOn] = useState(true);
-  const look = useAmbience(state.weather);
   const reduced = useReducedMotion();
 
   const onSelectRef = useRef(onSelect);

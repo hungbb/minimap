@@ -137,7 +137,7 @@ function fromCode(code: number): Conditions {
   if (code === 80) return wet('rain', 0.5, { clouds: 0.7 });
   if (code === 81) return wet('rain', 0.8, { clouds: 0.8 });
   if (code === 82) return wet('rain', 1);
-  if (code >= 95) return wet('rain', 1, { storm: true, gloom: 0.7 });
+  if (code >= 95) return wet('rain', 1, { storm: true, gloom: 0.7, wind: 0.6 });
   return CLEAR;
 }
 
@@ -199,17 +199,18 @@ function daylightAt(weather: WeatherInput | null, at: Date): Ambience {
   return { daylight, warmth, phase, lamps: lampsFor(daylight), sky: skyFor(daylight, warmth), weather: CLEAR };
 }
 
-/** Weather a `?weather=` preview can show, as the code the weather service would send. */
-export const PREVIEW_WEATHER: Record<string, number> = {
-  clear: 0,
-  partly: 2,
-  cloudy: 3,
-  fog: 45,
-  drizzle: 53,
-  rain: 63,
-  downpour: 65,
-  snow: 73,
-  storm: 95,
+/** Weather a `?weather=` preview can show, as the weather service would send it. */
+export const PREVIEW_WEATHER: Record<string, Pick<Weather, 'code'> & Partial<Pick<Weather, 'windSpeed'>>> = {
+  clear: { code: 0 },
+  partly: { code: 2 },
+  windy: { code: 2, windSpeed: 36 },
+  cloudy: { code: 3 },
+  fog: { code: 45 },
+  drizzle: { code: 53 },
+  rain: { code: 63 },
+  downpour: { code: 65, windSpeed: 20 },
+  snow: { code: 73 },
+  storm: { code: 95 },
 };
 
 /** Sunrise at 06:00 and sunset at 18:00 local time, for previewing without an office location. */

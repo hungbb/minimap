@@ -259,9 +259,24 @@ test('settings have defaults, and only the admin can change them', async (t) => 
   assert.equal(settings.publicUrl, '');
   assert.equal(settings.clocks.length, 2);
   assert.equal(settings.officeName, '');
+  assert.equal(settings.mapWeather, true, 'daylight and weather on the map are on by default');
   assert.equal(weather, null);
   assert.equal((await api('PATCH', '/api/admin/settings', { publicUrl: 'http://a.test' })).status, 401);
+  assert.equal((await api('PATCH', '/api/admin/settings', { mapWeather: false })).status, 401);
   assert.equal((await api('GET', '/api/admin/places?q=Hanoi')).status, 401);
+});
+
+test('the admin can turn daylight and weather on the map off, and it stays off after a restart', async (t) => {
+  const { api, dataFile } = await setup(t);
+  assert.equal((await api('PATCH', '/api/admin/settings', { mapWeather: 'no' }, ADMIN)).status, 400);
+  assert.equal((await api('PATCH', '/api/admin/settings', { mapWeather: false }, ADMIN)).status, 200);
+  assert.equal((await api('GET', '/api/state')).json.settings.mapWeather, false);
+
+  const restarted = createApp({ dataFile, adminPassword: 'secret' });
+  const port = await restarted.start(0);
+  t.after(() => restarted.stop());
+  const state = (await (await fetch(`http://127.0.0.1:${port}/api/state`)).json()) as TeamState;
+  assert.equal(state.settings.mapWeather, false);
 });
 
 test('the team address must be a full http address, or empty', async (t) => {

@@ -170,14 +170,17 @@ Set these on the Admin page. They apply straight away and are saved with the res
 - **Team address:** the address the QR code opens, such as `http://192.168.1.20:8080`. Set it for each deployment. If it's empty, the QR code uses the address the map was opened on. On `localhost` there is no QR code, because a phone couldn't open that address.
 - **Clocks:** a name and time zone for each of the two clocks.
 - **Main office location:** search for a city and pick it to show its weather. Remove it to hide the weather.
+- **Show the office's daylight and weather on the map:** on by default. Turn it off to keep the map in its plain daytime look for everyone.
 
 ### Daylight and weather on the map
 
 Once the main office location is set, the 2D and 3D maps follow the time of day there, using the office's real sunrise and sunset. The town gets warm light around sunrise and sunset, and a starry sky at night with glowing street lamps and lit office windows. Names, statuses and characters stay as readable as in the daytime. In the middle of the day, and without an office location, the map looks just as it always has.
 
-The map also shows the office's current weather: drifting clouds (with their shadows passing over the 3D town), fog, drizzle, rain and snow, and thunderstorms with an occasional soft flash of lightning (never a strobe). Rain and snow fall behind people and their names, so everyone stays easy to read. With reduced motion turned on in the device's settings, the weather is shown as a still picture and there's no lightning.
+The map also shows the office's current weather: drifting clouds (with their shadows passing over the 3D town), fog, drizzle, rain and snow, and thunderstorms with an occasional soft flash of lightning (never a strobe). Rain and snow fall behind people and their names, so everyone stays easy to read. People outdoors (in **Out of Office** and **Off today**) open umbrellas in rain and snow, puddles shine on the street while it rains, snow settles on the room tops, roofs and trees, and trees sway in the wind. With reduced motion turned on in the device's settings, the weather is shown as a still picture, with no lightning or swaying.
 
-To preview another time of day on one screen, add `?time=dawn`, `day`, `dusk`, `night` or a local time such as `?time=21:30` to the map's address (for example `/?mode=3d&time=dusk`). To preview weather, add `?weather=` with `clear`, `partly`, `cloudy`, `fog`, `drizzle`, `rain`, `downpour`, `snow` or `storm`. They can be combined, as in `/?weather=storm&time=night`, and only change that screen. Without an office location, the preview uses a 06:00 sunrise and an 18:00 sunset.
+Each screen can turn the effects off with the **Weather** button on the map's toolbar, which the browser remembers. The button shows when an office location is set and the setting above is on.
+
+To preview another time of day on one screen, add `?time=dawn`, `day`, `dusk`, `night` or a local time such as `?time=21:30` to the map's address (for example `/?mode=3d&time=dusk`). To preview weather, add `?weather=` with `clear`, `partly`, `windy`, `cloudy`, `fog`, `drizzle`, `rain`, `downpour`, `snow` or `storm`. Previews show even when the effects are turned off. They can be combined, as in `/?weather=storm&time=night`, and only change that screen. Without an office location, the preview uses a 06:00 sunrise and an 18:00 sunset.
 
 ## Settings
 
