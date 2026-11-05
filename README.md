@@ -177,7 +177,7 @@ Once the main office location is set, the 2D and 3D maps follow the time of day 
 
 The map also shows the office's current weather: drifting clouds (with their shadows passing over the 3D town), fog, drizzle, rain and snow, and thunderstorms with an occasional soft flash of lightning (never a strobe). Rain and snow fall behind people and their names, so everyone stays easy to read. With reduced motion turned on in the device's settings, the weather is shown as a still picture and there's no lightning.
 
-To preview another time of day on one screen, add `?time=dawn`, `day`, `dusk`, `night` or a local time such as `?time=21:30` to the map's address (for example `/?mode=3d&time=dusk`). To preview weather, add `?weather=` with `clear`, `partly`, `cloudy`, `fog`, `drizzle`, `rain`, `downpour`, `snow` or `storm`. They can be combined, as in `/?weather=storm&time=night`, and only change that screen. Without an office location, the preview uses a 06:00 sunrise and an 18:00 sunset.
+To preview another time of day on one screen, add `?time=dawn`, `day`, `dusk`, `night` or a time such as `?time=21:30` (in the time zone of the screen showing the map, not the office's) to the map's address (for example `/?mode=3d&time=dusk`). To preview weather, add `?weather=` with `clear`, `partly`, `cloudy`, `fog`, `drizzle`, `rain`, `downpour`, `snow` or `storm`. They can be combined, as in `/?weather=storm&time=night`, and only change that screen. Without an office location, the preview uses a 06:00 sunrise and an 18:00 sunset.
 
 ## Settings
 
