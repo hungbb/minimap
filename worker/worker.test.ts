@@ -306,6 +306,21 @@ test('fund links survive Durable Object eviction, and open maps get the fund as 
   assert.deepEqual(await live.nextEvent('fund'), []);
 });
 
+test('the office cat survives Durable Object eviction, and open maps get it as its own event', async (t) => {
+  const { api, join, evict, events } = await setup(t);
+  const lan = await join('lan');
+  assert.equal((await api('PATCH', '/api/pet/admin', { name: 'Tofu' }, ADMIN)).status, 200);
+  assert.equal((await api('POST', '/api/pet/feed', {}, { Authorization: `Bearer ${lan}` })).status, 200);
+  await evict();
+  const view = (await api('GET', '/api/pet')).json;
+  assert.deepEqual([view.name, view.fed, view.stage], ['Tofu', ['lan'], 'kitten']);
+  // Kept under its own key, and still in the admin's backup.
+  const backup = (await api('GET', '/api/admin/data', undefined, ADMIN)).json;
+  assert.equal(backup.pet.name, 'Tofu');
+  const live = await events();
+  assert.equal((await live.nextEvent('pet')).name, 'Tofu');
+});
+
 test('birthdays and wishes survive Durable Object eviction, and open maps get them as their own event', async (t) => {
   const { api, join, evict, events } = await setup(t);
   const lan = await join('lan');

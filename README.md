@@ -29,7 +29,7 @@ You need [Node.js](https://nodejs.org) 24 or newer.
 
 4. Open http://localhost:8080/admin, add some usernames, then claim one at http://localhost:8080/me.
 
-Data is saved in `data/data.json`, the basketball arcade's records in `data/basketball.json`, team votes in `data/vote.json`, the team fund's settings in `data/fund.json`, and birthdays and start dates in `data/celebrate.json`. Delete those files while the server is stopped to start over.
+Data is saved in `data/data.json`, the basketball arcade's records in `data/basketball.json`, team votes in `data/vote.json`, the team fund's settings in `data/fund.json`, birthdays and start dates in `data/celebrate.json`, and the office cat in `data/pet.json`. Delete those files while the server is stopped to start over.
 
 ## Develop
 
@@ -105,7 +105,7 @@ The container restarts by itself after a crash or reboot. Data is kept in the Do
 
 **Back up the data**
 
-This copies the whole data folder: the team's `data.json`, the arcade's `basketball.json`, the votes' `vote.json`, the fund's `fund.json` and the birthdays' `celebrate.json`. **Download backup** on the Admin page also saves all five, in one file.
+This copies the whole data folder: the team's `data.json`, the arcade's `basketball.json`, the votes' `vote.json`, the fund's `fund.json`, the birthdays' `celebrate.json` and the cat's `pet.json`. **Download backup** on the Admin page also saves all six, in one file.
 
 ```bash
 docker compose cp minimap:/app/data ./backup
@@ -271,6 +271,16 @@ How the sheet works, so the map stays right: the hidden column B counts the mont
 The server reads the sheet when it starts and every hour (on Cloudflare: when someone opens the map and the last read is an hour old), and right away with **Read now**. If a read fails, the map keeps the last looks and the Admin page says why. The settings, links and last rows are kept in `data/fund.json` on Node.js and under the `fund` key on Cloudflare, and go into the admin's backup under `fund`. Deleting a member removes their link.
 
 The API: `GET /api/fund` (anyone: each linked member's title, months, tier and whether they hid it), `PATCH /api/fund/me` (`hidden`, with a login), and with `x-admin-password`: `GET /api/fund/admin`, `PATCH /api/fund/admin` (`sheet`, `links` as `[username, name]` pairs) and `POST /api/fund/admin/refresh`. Live updates come on `/api/events` as `event: fund`.
+
+## Office cat
+
+A cat lives in the first office on the map, on both the 2D and 3D maps. In 2D it sits by the plant in the room's bottom-right corner; in 3D it walks around the room like the team's characters do, steering round desks and now and then trotting over to someone. It naps when nobody is in that office. Otherwise its mood comes from how many people are there and how many have fed it today: content, happy, or overjoyed with hearts. After two or more quiet days in a row with nobody feeding it, it looks lonely until someone does. It never goes away.
+
+Click the cat to open its card. People who are logged in can select **Feed** once a day, and the cat hops on every open map. Three feeds make a **good day**. After 5 good days the kitten grows into a cat, and after 20 into a big cat; it never shrinks. Days follow the team's time zone (`TZ`) and start at midnight, not at the daily reset time (`RESET_AT`).
+
+The admin names the cat under **Office cat** on the Admin page (it starts as Miu). To let the team choose, start a vote on `/vote` and save the winner there. The cat is kept in `data/pet.json` on Node.js and under the `pet` key on Cloudflare, and goes into the admin's backup under `pet`.
+
+The API: `GET /api/pet` (anyone: name, today's feeds, good days, quiet days, stage), `POST /api/pet/feed` (with a login) and `PATCH /api/pet/admin` (`name`, with `x-admin-password`). Live updates come on `/api/events` as `event: pet`.
 
 ## Birthdays and anniversaries
 

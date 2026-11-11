@@ -2,6 +2,7 @@ import type { TeamState, TeamUser } from '../../shared/types.ts';
 import type { LatestResult, VoteView } from '../../shared/vote.ts';
 import type { SelectHandler } from '../components/Badge.tsx';
 import type { Ambience } from '../lib/ambience.ts';
+import type { PetShown } from '../lib/petLook.ts';
 import type { Reaction } from '../lib/voteReactions.ts';
 
 /** Asks the map to bring a person into view. `at` lets the same person be requested twice. */
@@ -33,6 +34,10 @@ export interface MapProps {
   onPicker: (trigger: HTMLElement) => void;
   onAssemble: (trigger: HTMLElement) => void;
   onArcade: (trigger: HTMLElement) => void;
+  /** The office cat, or null before it has loaded. */
+  pet: PetShown | null;
+  /** A click on the office cat, to open its card. */
+  onPet: (trigger: HTMLElement) => void;
   /** The time of day and weather to show (lib/ambience.ts). */
   look: Ambience;
   /** The team's votes, as anyone may see them. The notice board shows the open ones. */

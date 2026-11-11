@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import { createBasketball, takeOldBasketball } from './basketball/core.ts';
 import { createCelebrate } from './celebrate/core.ts';
 import { createFund } from './fund/core.ts';
+import { createPet } from './pet/core.ts';
 import { FUND_EVERY_MS } from '../shared/fund.ts';
 import { createVote } from './vote/core.ts';
 import { ApiError, createCore, MAX_BODY, WEATHER_EVERY_MS, type ApiRequest, type JsonBody } from './core.ts';
@@ -58,6 +59,7 @@ export function createApp({ dataFile, publicDir = path.join(ROOT, 'dist'), ...op
   const basketballFile = path.join(path.dirname(dataFile), 'basketball.json');
   const voteFile = path.join(path.dirname(dataFile), 'vote.json');
   const fundFile = path.join(path.dirname(dataFile), 'fund.json');
+  const petFile = path.join(path.dirname(dataFile), 'pet.json');
   const celebrateFile = path.join(path.dirname(dataFile), 'celebrate.json');
 
   const teamSaved = readFile(dataFile);
@@ -100,6 +102,22 @@ export function createApp({ dataFile, publicDir = path.join(ROOT, 'dist'), ...op
   });
   core.attach(fund.feature);
 
+  const pet = createPet({
+    saved: readFile(petFile),
+    save: (data) => writeFile(petFile, data),
+    team: core.team,
+    onChange: (view) => sendAll(petEvent(view)),
+    now: options.now,
+  });
+  core.attach(pet.feature);
+
+  function petEvent(view: unknown): string {
+    return `event: pet
+data: ${JSON.stringify(view)}
+
+`;
+  }
+
   const celebrate = createCelebrate({
     saved: readFile(celebrateFile),
     save: (data) => writeFile(celebrateFile, data),
@@ -133,7 +151,8 @@ data: ${JSON.stringify(people)}
   }
 
   async function answer(req: ApiRequest) {
-    return (await basketball.handle(req)) ?? (await votes.handle(req)) ?? (await fund.handle(req)) ?? (await celebrate.handle(req)) ?? (await core.handle(req));
+    return (await basketball.handle(req)) ?? (await votes.handle(req)) ?? (await fund.handle(req)) ?? (await celebrate.handle(req))
+      ?? (await pet.handle(req)) ?? (await core.handle(req));
   }
 
   function readJson(req: Req, maxBytes = MAX_BODY): Promise<JsonBody> {
@@ -173,6 +192,7 @@ data: ${JSON.stringify(people)}
     res.write(voteEvent(votes.views()));
     res.write(fundEvent(fund.people()));
     res.write(celebrateEvent(celebrate.view()));
+    res.write(petEvent(pet.view()));
     sseClients.add(res);
     req.on('close', () => sseClients.delete(res));
   }
@@ -255,6 +275,7 @@ data: ${JSON.stringify(people)}
     core.runResetIfDue();
     core.runScheduledIfDue();
     celebrate.tick();
+    void pet.tick();
   }
 
   function start(port: number): Promise<number> {

@@ -9,7 +9,7 @@ A small React + TypeScript app that shows where the team works today, on a 2D an
 - **Node.js** (`server/server.ts`): data is kept in a JSON file, `data/data.json`. Used locally and in Docker.
 - **Cloudflare Workers** (`worker/index.ts`): the same data is kept as one value (key `data`) in the `Minimap` Durable Object named `team`. Only `main` is deployed.
 
-Features with their own data live in their own folder (`server/basketball/`, `server/vote/`, `server/fund/`, `server/celebrate/`) and keep their own file (`data/basketball.json`, `data/vote.json`, `data/fund.json`, `data/celebrate.json`) or storage key (`basketball`, `vote`, `fund`, `celebrate`).
+Features with their own data live in their own folder (`server/basketball/`, `server/vote/`, `server/fund/`, `server/celebrate/`, `server/pet/`) and keep their own file (`data/basketball.json`, `data/vote.json`, `data/fund.json`, `data/celebrate.json`, `data/pet.json`) or storage key (`basketball`, `vote`, `fund`, `celebrate`, `pet`).
 
 `core.ts` never knows where data comes from or goes to. The host hands it `saved`, `save()` and `onChange()`, and does the same for each feature. A feature's `save()` may return a promise: on Cloudflare it resolves once the write is stored.
 
@@ -95,14 +95,14 @@ Paths are from the project root. Function names are given instead of line number
 |---|---|
 | Team API routes, data shape (`Data`), validation, `ApiError` | `server/core.ts`: `createCore` → `route()`; the routes are `if (route === 'METHOD /api/...')` blocks; `handle()` and `errorResponse` turn errors into JSON |
 | What features may use from the team | `core.ts`: `Team` (`core.team`: `player`, `members`, `sign`, `requireAdmin`), `TeamFeature` (`core.attach`), `backupError`, `safeEqual` |
-| Node server: static files, data files, SSE, timers | `server/server.ts`: `createApp` (`readFile` / `writeFile`, `answer`, `openEvents`, `sendAll`, `voteEvent`, `fundEvent`, `celebrateEvent`, `serveStatic`, `runTimedChanges`, `start`) |
-| Cloudflare Worker + Durable Object | `worker/index.ts`: default `fetch` (routing, `PAGES`), class `Minimap` (storage keys `data`, `basketball`, `vote`, `fund` and `celebrate`, `alarm`, `syncAlarm`, `runTimedChanges`, `refreshFundIfDue`, SSE, ping), `voteEvent`, `fundEvent`, `celebrateEvent` |
+| Node server: static files, data files, SSE, timers | `server/server.ts`: `createApp` (`readFile` / `writeFile`, `answer`, `openEvents`, `sendAll`, `voteEvent`, `fundEvent`, `celebrateEvent`, `petEvent`, `serveStatic`, `runTimedChanges`, `start`) |
+| Cloudflare Worker + Durable Object | `worker/index.ts`: default `fetch` (routing, `PAGES`), class `Minimap` (storage keys `data`, `basketball`, `vote`, `fund`, `celebrate` and `pet`, `alarm`, `syncAlarm`, `runTimedChanges`, `refreshFundIfDue`, SSE, ping), `voteEvent`, `fundEvent`, `celebrateEvent`, `petEvent` |
 | Cloudflare settings (vars, bindings, build) | `wrangler.jsonc` |
-| Docker | `Dockerfile`, `docker-compose.yml` (data volume `minimap-data` → `/app/data`, holding `data.json`, `basketball.json`, `vote.json`, `fund.json` and `celebrate.json`), `.dockerignore` |
+| Docker | `Dockerfile`, `docker-compose.yml` (data volume `minimap-data` → `/app/data`, holding `data.json`, `basketball.json`, `vote.json`, `fund.json`, `celebrate.json` and `pet.json`), `.dockerignore` |
 | Types sent to the browser | `shared/types.ts` (`TeamState`, `TeamUser` (its `fund` and `celebration` are added by the browser, never sent), `ScheduledChange`, `Weather`, ...) |
 | Character design limits (server and editor) | `shared/look.ts` |
 | Frontend entry and page switch | `src/main.tsx` |
-| Fetch, live updates, errors in the browser | `src/lib/api.ts` (`api`, `subscribe`, which also takes features' named events such as `vote`, `fund` and `celebrate`, `errorText`), `src/lib/hooks.ts` (`useTeamState` gives the state, with each user's fund standing and today's celebration added, the votes, the fund and the celebrations, `useNow`, `useAmbience`, ...) |
+| Fetch, live updates, errors in the browser | `src/lib/api.ts` (`api`, `subscribe`, which also takes features' named events such as `vote`, `fund`, `celebrate` and `pet`, `errorText`), `src/lib/hooks.ts` (`useTeamState` gives the state, with each user's fund standing and today's celebration added, the votes, the fund, the celebrations and the office cat, `useNow`, `useAmbience`, ...) |
 | Styles and shared controls | `src/styles/theme.ts`, `src/styles/ui.ts`, `src/styles/GlobalStyle.ts` |
 | 3D support and lost-context fallback | `src/lib/webgl.ts` (`supportsWebGL`), `src/lib/contextLoss.ts` (`watchContextLoss`, 10 s wait) |
 | CI (read-only token, safe for pull requests from forks) | `.github/workflows/check.yml` |
@@ -217,6 +217,19 @@ Paths are from the project root. Function names are given instead of line number
 | Admin panel, account panel, title on the card | `src/components/FundAdminPanel.tsx` (on `AdminPage.tsx`), `src/components/FundPanel.tsx` (in `MemberEditor.tsx`), `CardFund` in `DetailCard.tsx` |
 | Tests | `shared/fund.test.ts`, `server/fund/fund.test.ts` (a pretend sheet through `fetchImpl`), `src/lib/fundLook.test.ts`, the fund test in `worker/worker.test.ts` |
 
+### Office cat
+| Feature | Code |
+|---|---|
+| Rules shared by browser and server (stages, good and quiet days, closing a day, mood, names, words) | `shared/pet.ts` (`stageFor`, `rollOver`, `toView`, `moodOf`, `cleanName`, `dateIn`, `stageText`, `moodText`, `GOOD_DAY_FEEDS`, `STAGES`) |
+| API: see it, feed it once a day, name it (admin) | `server/pet/core.ts`: `createPet` → `route()` with `GET /api/pet`, `POST /api/pet/feed`, `PATCH /api/pet/admin`; `change` (closes past days first, then queue, save, undo), `tick` |
+| Stored data | `PetState` (`name`, `day`, `fed`, `goodDays`, `quietDays`): `data/pet.json` on Node, key `pet` on Cloudflare. No alarm: `view()` works the new day out from the date, and `tick` (run from `runTimedChanges` in both hosts) saves it and tells open maps |
+| Backup part, deleted people | `server/pet/core.ts`: `feature` (`checkPet`, `forget`) |
+| Live updates | `onChange` → `event: pet` on `/api/events`, also sent when a stream opens; `useTeamState` gives it as `pet` |
+| Where it sits, what the maps show, when it hops | `petSpot` in `src/lib/layout.ts`; `src/lib/petLook.ts` (`petShown`, `inMainOffice`, `newFeed`, `STAGE_SCALE`, `CAT`); planned in `MonitorPage.tsx` (`cheer`), passed as `pet` / `onPet` in `MapProps` |
+| Drawing it | 2D: `src/map/OfficeCat2D.tsx` (`SittingCat`, `SleepingCat`, `CatArt`); 3D: `src/map/cat3d.ts` (`createOfficeCat`: sit, walk and sleep poses), placed, clicked and walked round the main office in `scene3d.ts` (section "The office cat": `nextCatSpot`, `animateCat`, using `wander.ts`; `setPet`), name-tag button in `Map3D.tsx` (`[data-office-cat]`) |
+| Card and admin panel | `src/components/PetCard.tsx` (Feed button; reuses `Card` and `place` from `DetailCard.tsx`), with the turning 3D cat in lazy `src/components/PetCat3D.tsx` (2D `CatArt` while loading or without WebGL), `src/components/PetAdminPanel.tsx` (on `AdminPage.tsx`) |
+| Tests | `shared/pet.test.ts`, `server/pet/pet.test.ts`, `src/lib/petLook.test.ts`, the cat test in `src/lib/layout.test.ts`, the cat test in `worker/worker.test.ts` |
+
 ### Birthdays and anniversaries
 | Feature | Code |
 |---|---|
@@ -248,7 +261,7 @@ Paths are from the project root. Function names are given instead of line number
 | What | Where |
 |---|---|
 | Test runner (fails when no tests run) | `scripts/run-tests.ts`, its own test `scripts/run-tests.test.ts` |
-| API tests (through a real Node server) | `server/server.test.ts` (`setup()` makes a temp data file), `server/basketball/basketball.test.ts`, `server/vote/vote.test.ts`, `server/celebrate/celebrate.test.ts` |
+| API tests (through a real Node server) | `server/server.test.ts` (`setup()` makes a temp data file), `server/basketball/basketball.test.ts`, `server/vote/vote.test.ts`, `server/celebrate/celebrate.test.ts`, `server/pet/pet.test.ts` |
 | Worker tests (real workerd) | `worker/worker.test.ts` |
 | Pure logic tests | `src/lib/*.test.ts`, `shared/*.test.ts` |
 | 20 pretend users | `scripts/sample-team.ts` (`npm run test-members`) |

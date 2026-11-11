@@ -250,6 +250,19 @@ export function noticeBoardSpot(layout: Pick<MapLayout, 'park'>): Rect | null {
   return parkActivities(layout)?.board ?? null;
 }
 
+/**
+ * Where the office cat sits in both maps: on the floor of the main office, just inside the
+ * potted plant in its bottom-right corner. `x` and `y` are its feet; `size` is a grown cat's
+ * width. Null when there is no office.
+ */
+export function petSpot(layout: Pick<MapLayout, 'zones'>, places: Place[]): { x: number; y: number; size: number; zoneId: string } | null {
+  const main = places[0];
+  const z = main && layout.zones.find((zone) => zone.id === main.id);
+  if (!z) return null;
+  const size = Math.max(3, Math.min(6, z.w * 0.12, z.h * 0.2));
+  return { x: z.x + z.w * 0.9 - size / 2, y: z.y + z.h * 0.97, size, zoneId: z.id };
+}
+
 /** People stand clear of room names and edges. Activities have their own park. */
 export function standingArea(z: Zone): Rect { return roomArea(z); }
 

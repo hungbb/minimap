@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import styled, { css } from 'styled-components';
 import { mapSummary, resultText, type VoteView } from '../../shared/vote.ts';
+import { moodText } from '../../shared/pet.ts';
 import { voteLink } from '../lib/noticeBoard.ts';
 import { Badge, BadgeName } from '../components/Badge.tsx';
 import { PICKER_LABELS } from '../lib/pickerAppearance.ts';
@@ -47,6 +48,15 @@ const View = styled.div<{ $namesOff: boolean }>`
         display: none;
       }
     `}
+`;
+
+// The cat's name above its head, drawn like a team member's name, and its button.
+const PetName = styled.button`
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
 `;
 
 const ZoneLabel = styled.div`
@@ -192,6 +202,8 @@ export default function Map3D({
   focus,
   onSelect,
   onArcade,
+  onPet,
+  pet,
   onPicker,
   onAssemble,
   look,
@@ -215,6 +227,9 @@ export default function Map3D({
   const [boardSlot, setBoardSlot] = useState<HTMLElement | null>(null);
   const onArcadeRef = useRef(onArcade);
   onArcadeRef.current = onArcade;
+  const [petSlot, setPetSlot] = useState<HTMLElement | null>(null);
+  const onPetRef = useRef(onPet);
+  onPetRef.current = onPet;
   const [personLabels, setPersonLabels] = useState<ReadonlyMap<string, HTMLElement>>(new Map());
   const [zoneLabels, setZoneLabels] = useState<ZoneLabelSlot[]>([]);
   const [camera, setCamera] = useState<CameraState>({ presets: [], active: 'overview' });
@@ -236,6 +251,7 @@ export default function Map3D({
       onCamera: setCamera,
       onPicker: trigger => onPickerRef.current(trigger),
       onArcade: (trigger) => onArcadeRef.current(trigger),
+      onPet: (trigger) => onPetRef.current(trigger),
       onNoticeBoard: (link) => location.assign(link),
       onContextGone: () => onFailRef.current(),
       onMove: (place) => onMoveRef.current(place),
@@ -252,19 +268,25 @@ export default function Map3D({
       setPickerSlot(null);
       setArcadeSlot(null);
       setBoardSlot(null);
+      setPetSlot(null);
     };
   }, []);
 
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    const { people, zones, arcade, picker, board } = scene.update(state, isDimmed);
+    const { people, zones, arcade, picker, board, pet: petLabel } = scene.update(state, isDimmed);
     setPersonLabels(people);
     setZoneLabels(zones);
     setPickerSlot(picker);
     setArcadeSlot(arcade);
     setBoardSlot(board);
+    setPetSlot(petLabel);
   }, [state, isDimmed, portrait]);
+
+  useEffect(() => {
+    sceneRef.current?.setPet(pet);
+  }, [pet, petSlot]);
 
   useEffect(() => {
     sceneRef.current?.setVotes(votes);
@@ -341,6 +363,21 @@ export default function Map3D({
             Play
           </ArcadePlay>,
           arcadeSlot,
+        )}
+
+      {/* The cat's name, which is also its button for keyboards and screen readers. */}
+      {petSlot && pet &&
+        createPortal(
+          <PetName
+            type="button"
+            data-office-cat
+            aria-haspopup="dialog"
+            aria-label={`${pet.name}, the office cat. ${moodText(pet.mood, pet.name)}`}
+            onClick={(event) => onPet(event.currentTarget)}
+          >
+            <BadgeName>{pet.name}</BadgeName>
+          </PetName>,
+          petSlot,
         )}
 
       {pickerSlot && createPortal(

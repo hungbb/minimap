@@ -5,7 +5,7 @@ import { officeAssembly } from '../lib/assembly.ts';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import type { TeamState, TeamUser } from '../../shared/types.ts';
+import type { Place, TeamState, TeamUser } from '../../shared/types.ts';
 import { resultText, type VoteView } from '../../shared/vote.ts';
 import { CLEAR, mixColor, type Ambience, type Conditions } from '../lib/ambience.ts';
 import { watchContextLoss } from '../lib/contextLoss.ts';
@@ -13,8 +13,9 @@ import { fundArt, userFundTier } from '../lib/fundLook.ts';
 import { BODY_RADIUS } from '../lib/drawing.ts';
 import { boardNotes, voteLink } from '../lib/noticeBoard.ts';
 import { DRAG_START_PX, dropPlace, zoneAt } from '../lib/dragMove.ts';
-import { computeLayout, noticeBoardSpot, parkActivities, standingArea, type MapLayout, type Zone, type ZoneKind } from '../lib/layout.ts';
+import { computeLayout, noticeBoardSpot, parkActivities, petSpot, standingArea, type MapLayout, type Zone, type ZoneKind } from '../lib/layout.ts';
 import { box, clampTo, contains, grow, hopHeight, pickSpot, steer, type Box } from '../lib/wander.ts';
+import type { PetShown } from '../lib/petLook.ts';
 import type { Reaction, ReactionKind } from '../lib/voteReactions.ts';
 import { parkTrees } from '../lib/parkTrees.ts';
 import { createTraffic, parkedTraffic, stepTraffic, stepTrafficDodge, streetRoad, type Road, type TrafficDodge } from '../lib/traffic.ts';
@@ -22,6 +23,7 @@ import { createTraffic3D } from './traffic3d.ts';
 import { createPickerCabinet } from './pickerCabinet3d.ts';
 import { createArcadeCabinet } from './arcade3d.ts';
 import { createBlimp } from './blimp3d.ts';
+import { createOfficeCat, type OfficeCat3D } from './cat3d.ts';
 import { createCharacterBuilder } from './character3d.ts';
 import { createNoticeBoard, type NoticeBoard3D } from './noticeBoard3d.ts';
 import type { VoteMarks } from './types.ts';
@@ -50,6 +52,8 @@ export interface SceneLabels {
   picker: HTMLElement | null;
   /** Where the notice board's link goes. */
   board: HTMLElement | null;
+  /** Where the office cat's name and button go. */
+  pet: HTMLElement | null;
 }
 
 export interface Scene3D {
@@ -69,11 +73,15 @@ export interface Scene3D {
   react(list: Reaction[]): void;
   /** The person logged in on this browser, who may drag their own character to another room. */
   setMover(username: string | null): void;
+  /** The office cat's name, size and mood (lib/petLook.ts). Null hides it. */
+  setPet(pet: PetShown | null): void;
   destroy(): void;
 }
 
 interface SceneOptions {
   onArcade: (trigger: HTMLElement) => void;
+  /** A click on the office cat. */
+  onPet: (trigger: HTMLElement) => void;
   onPicker: (trigger: HTMLElement) => void;
   /** A click on the notice board: the /vote page, or one vote on it. */
   onNoticeBoard: (link: string) => void;
@@ -244,6 +252,10 @@ function glowTexture() {
 }
 const WALK_SPEED = 16;
 const WANDER_SPEED = 4.2;
+// The office cat trots a little slower than people stroll, and is a bit smaller than them when grown.
+const CAT_SPEED = 3.4;
+const CAT_SIZE = 2.6;
+const CAT_LABEL_CELL = 15; // The biggest seat a room gives, for sizing the cat's name in an empty office.
 const CROWDED_CELL = 6; // Below this, people stay put: there's no room to wander.
 const STUCK_SECONDS = 3;
 const WALL_H = 5;
@@ -274,7 +286,7 @@ function checkerTexture(a: string, b: string) {
   return texture;
 }
 
-export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGone, onArcade, onPicker, onNoticeBoard, onMove }: SceneOptions): Scene3D {
+export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGone, onArcade, onPet, onPicker, onNoticeBoard, onMove }: SceneOptions): Scene3D {
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   let reducedMotion = motion.matches;
   const ramp = toonRamp();
@@ -362,6 +374,18 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
   let arcade: THREE.Group | null = null;
   let arcadeSlot: HTMLElement | null = null;
   let noticeBoard: NoticeBoard3D | null = null;
+  let officeCat: OfficeCat3D | null = null;
+  let pet: PetShown | null = null;
+  // Where the cat may walk, where it is heading, and when it next sets off.
+  let catZoneId = '';
+  let catArea: Box | null = null;
+  let catGoal: Point | null = null;
+  let catAt: Point | null = null;
+  let catWaitUntil = 0;
+  let catClosest = Infinity;
+  let catCloserAt = 0;
+  let catLabelScale = 0;
+  let places: Place[] = [];
   let votes: VoteView[] = [];
   let boardDrawnAt = 0;
   let boardPulsing = false;
@@ -722,6 +746,27 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
         if (kind === 'arcade') { arcade = cabinet.group; arcadeSlot = cabinet.playElement; }
         else { picker = cabinet.group; pickerSlot = cabinet.playElement; }
       }
+    }
+
+    // The office cat starts by the plant in the main office, or where it was before the town
+    // was rebuilt, and wanders that room's floor (see "The office cat" below).
+    officeCat = null;
+    catArea = null;
+    catGoal = null;
+    const catSpot = petSpot(layout, places);
+    const catZone = catSpot && layout.zones.find((z) => z.id === catSpot.zoneId);
+    if (catSpot && catZone) {
+      officeCat = createOfficeCat(CAT_SIZE);
+      catZoneId = catZone.id;
+      catArea = wanderArea(catZone, 1);
+      const start = toWorld(catSpot.x, catSpot.y - catSpot.size * 0.3);
+      const at = catAt && contains(catArea, catAt) ? catAt : clampTo(catArea, start);
+      officeCat.group.position.set(at.x, 1, at.z);
+      officeCat.group.visible = Boolean(pet);
+      if (pet) officeCat.set(pet);
+      world.add(officeCat.group);
+      catWaitUntil = 0;
+      catLabelScale = 0;
     }
 
     // The notice board stands at the back of its spot, facing the camera, lit after dark.
@@ -1106,9 +1151,10 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     if (arcade) meshes.push(arcade);
     if (picker) meshes.push(picker);
     if (noticeBoard) meshes.push(noticeBoard.group);
+    if (officeCat?.group.visible) meshes.push(officeCat.group);
     if (blimp.group.visible) meshes.push(blimp.group);
     const hit = raycaster.intersectObjects(meshes, true).find(
-      (h) => h.object.userData.username || h.object.userData.arcade || h.object.userData.picker || h.object.userData.noticeBoard || h.object.userData.resultBanner,
+      (h) => h.object.userData.username || h.object.userData.pet || h.object.userData.arcade || h.object.userData.picker || h.object.userData.noticeBoard || h.object.userData.resultBanner,
     );
     if (hit?.object.userData.resultBanner && voteMarks?.result) {
       onNoticeBoard(voteLink(voteMarks.result.vote.id));
@@ -1121,6 +1167,10 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     if (hit?.object.userData.picker && pickerSlot) {
       const control = pickerSlot.querySelector<HTMLButtonElement>('[data-picker-play]');
       if (control && !control.disabled) onPicker(control);
+      return;
+    }
+    if (hit?.object.userData.pet && officeCat) {
+      onPet(officeCat.slot.querySelector<HTMLElement>('[data-office-cat]') ?? officeCat.slot);
       return;
     }
     if (hit?.object.userData.arcade && arcadeSlot) {
@@ -1251,6 +1301,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     const portrait = root.clientHeight > 0 && root.clientWidth / root.clientHeight < 0.95;
     const reflow = portrait !== portraitLayout;
     portraitLayout = portrait;
+    places = state.places;
     layout = computeLayout(state.places, state.users, { portrait });
 
     // Rooms change size with their people, which means rebuilding the town.
@@ -1331,7 +1382,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
       const element = zoneLabels.get(id);
       return element ? [{ id, name, count, element }] : [];
     });
-    return { people: labelElements, zones, arcade: arcadeSlot, picker: pickerSlot, board: noticeBoard?.slot ?? null };
+    return { people: labelElements, zones, arcade: arcadeSlot, picker: pickerSlot, board: noticeBoard?.slot ?? null, pet: officeCat?.slot ?? null };
   }
 
   // ---- Animation --------------------------------------------------------
@@ -1351,6 +1402,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     if (time - boardDrawnAt > (boardPulsing ? 0.1 : 30)) drawBoard(time);
     animateVoteMarks(time);
     animateBursts(dt, time);
+    animateCat(dt, time);
 
     if (road) {
       const people = [...characters.values()].filter(c => !c.held).map(c => ({
@@ -1365,9 +1417,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
       const size = c.scale;
       group.scale.setScalar(size);
 
-      // Shrink labels when neighbours would overlap at the current zoom.
-      const pixelsPerUnit = root.clientHeight / (2 * group.position.distanceTo(camera.position) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
-      const labelScale = Math.round(Math.max(root.clientWidth < 600 ? 0.42 : 0.55, Math.min((c.cell * pixelsPerUnit) / 104, 1)) * 20) / 20;
+      const labelScale = labelScaleAt(group.position, c.cell);
       if (labelScale !== c.labelScale) {
         c.labelScale = labelScale;
         c.labelElement.style.transform = `scale(${labelScale})`;
@@ -1542,6 +1592,111 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     }
   }
 
+  // Shrink labels when neighbours would overlap at the current zoom. The cat's name uses this
+  // too, so it is the same size as the names of the people around it.
+  function labelScaleAt(position: THREE.Vector3, cell: number): number {
+    const pixelsPerUnit = root.clientHeight / (2 * position.distanceTo(camera.position) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+    return Math.round(Math.max(root.clientWidth < 600 ? 0.42 : 0.55, Math.min((cell * pixelsPerUnit) / 104, 1)) * 20) / 20;
+  }
+
+  // ---- The office cat ------------------------------------------------------
+  // It wanders the main office like people do, using the same rules to pick spots and walk
+  // round desks and people. Now and then it trots over to someone in the room, and it stays
+  // put while asleep, while wandering is off or when motion is turned down.
+
+  function catObstacles(): Box[] {
+    return [...scenery, ...deskBoxes.values()];
+  }
+
+  function nextCatSpot(cat: OfficeCat3D): Point | null {
+    const from = cat.group.position;
+    const people = [...characters.values()].filter((c) => c.zoneId === catZoneId);
+    const blocked = catObstacles().map((b) => grow(b, cat.radius()));
+    const visit = people[Math.floor(Math.random() * people.length)];
+    if (visit && Math.random() < 0.4 && catArea) {
+      // Stop beside them, on the side the cat is coming from.
+      const p = visit.group.position;
+      const away = Math.hypot(from.x - p.x, from.z - p.z) || 1;
+      const gap = bodyRadius(visit) + cat.radius() + 0.4;
+      const spot = clampTo(catArea, { x: p.x + ((from.x - p.x) / away) * gap, z: p.z + ((from.z - p.z) / away) * gap });
+      if (!blocked.some((b) => contains(b, spot))) return spot;
+    }
+    return catArea && pickSpot(catArea, from, people.map((c) => c.group.position), blocked);
+  }
+
+  function turnCat(cat: OfficeCat3D, angle: number, dt: number) {
+    cat.group.rotation.y += shortestAngle(angle - cat.group.rotation.y) * Math.min(1, dt * 6);
+  }
+
+  function animateCat(dt: number, time: number) {
+    const cat = officeCat;
+    if (!cat?.group.visible) return;
+    const position = cat.group.position;
+    catAt = { x: position.x, z: position.z };
+    // Sized like the names of people in the same room; an empty room uses its biggest seat.
+    const cell = [...layout.seats.values()].find((s) => s.zone.id === catZoneId)?.cell ?? CAT_LABEL_CELL;
+    const scale = labelScaleAt(position, cell);
+    if (scale !== catLabelScale) {
+      catLabelScale = scale;
+      cat.slot.style.transform = `scale(${scale})`;
+    }
+    if (!reducedMotion) cat.animate(time);
+
+    if (reducedMotion || !wandering || pet?.mood === 'sleeping' || !catArea) {
+      catGoal = null;
+      cat.setWalking(false);
+      return;
+    }
+    if (!catGoal) {
+      // Sitting: turn to face the camera, then set off again after a while.
+      cat.setWalking(false);
+      turnCat(cat, 0, dt);
+      if (time < catWaitUntil) return;
+      catGoal = nextCatSpot(cat);
+      catClosest = Infinity;
+      catCloserAt = time;
+      if (!catGoal) catWaitUntil = time + 2;
+      return;
+    }
+
+    const distance = Math.hypot(catGoal.x - position.x, catGoal.z - position.z);
+    if (distance < 0.3) {
+      catGoal = null;
+      catWaitUntil = time + 3 + Math.random() * 6;
+      return;
+    }
+    cat.setWalking(true);
+    const radius = cat.radius();
+    let direction = steer(position, catGoal, catObstacles(), radius + 0.3);
+    for (const c of characters.values()) {
+      if (c.zoneId !== catZoneId) continue;
+      const dx = position.x - c.group.position.x;
+      const dz = position.z - c.group.position.z;
+      const apart = Math.hypot(dx, dz);
+      const room = (radius + bodyRadius(c)) * 0.95;
+      if (apart > 1e-6 && apart < room) {
+        const push = ((room - apart) / room) * 1.5;
+        direction = { x: direction.x + (dx / apart) * push, z: direction.z + (dz / apart) * push };
+      }
+    }
+    const length = Math.hypot(direction.x, direction.z) || 1;
+    direction = { x: direction.x / length, z: direction.z / length };
+    const step = Math.min(distance, CAT_SPEED * dt);
+    const inside = clampTo(catArea, { x: position.x + direction.x * step, z: position.z + direction.z * step });
+    position.x = inside.x;
+    position.z = inside.z;
+    turnCat(cat, Math.atan2(direction.x, direction.z), dt * 1.5);
+
+    // Boxed in: give up on this spot and sit for a bit.
+    if (distance < catClosest - 0.5) {
+      catClosest = distance;
+      catCloserAt = time;
+    } else if (time - catCloserAt > STUCK_SECONDS) {
+      catGoal = null;
+      catWaitUntil = time + 2;
+    }
+  }
+
   function shortestAngle(angle: number): number {
     return Math.atan2(Math.sin(angle), Math.cos(angle));
   }
@@ -1633,6 +1788,13 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
           c.emoji.visible = false;
         }
       }
+    },
+
+    setPet(next) {
+      pet = next;
+      if (!officeCat) return;
+      officeCat.group.visible = Boolean(next);
+      if (next) officeCat.set(next);
     },
 
     setVoteMarks(marks) {

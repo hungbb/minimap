@@ -9,12 +9,13 @@ import { Badge, BadgeFigure, type SelectHandler } from '../components/Badge.tsx'
 import { Desk, Mochi, MochiSvg } from '../components/Mochi.tsx';
 import { useElementSize, useReducedMotion } from '../lib/hooks.ts';
 import { createPress, dropPlace, zoneAt } from '../lib/dragMove.ts';
-import { computeLayout, noticeBoardSpot, parkActivities, type MapLayout, type Seat, type Zone, type ZoneKind } from '../lib/layout.ts';
+import { computeLayout, noticeBoardSpot, parkActivities, petSpot, type MapLayout, type Seat, type Zone, type ZoneKind } from '../lib/layout.ts';
 import type { Ambience } from '../lib/ambience.ts';
 import { lookFor } from '../lib/look.ts';
 import { media, theme } from '../styles/theme.ts';
 import { DECOR, Tree, STREET_ART, Umbrella } from './decor.tsx';
 import { ArcadeCabinet2D } from './ArcadeCabinet.tsx';
+import { OfficeCat2D } from './OfficeCat2D.tsx';
 import { parkTrees } from '../lib/parkTrees.ts';
 import { PickerCabinet } from './PickerCabinet.tsx';
 import { NoticeBoard2D } from './NoticeBoard2D.tsx';
@@ -688,7 +689,7 @@ function isPlain(look: Ambience): boolean {
   return look.daylight === 1 && look.warmth === 0 && look.weather.gloom === 0;
 }
 
-export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, onAssemble, onPicker, look, votes, voteMarks, reactions, mover, onMove }: MapProps) {
+export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, onPet, pet, onAssemble, onPicker, look, votes, voteMarks, reactions, mover, onMove }: MapProps) {
   const attendance = officeAssembly(state);
   const fillRef = useRef<HTMLDivElement>(null);
   const planRef = useRef<HTMLDivElement>(null);
@@ -723,6 +724,7 @@ export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, o
   const layout = useMemo(() => computeLayout(state.places, state.users, { portrait }), [state.places, state.users, portrait]);
 
   const board = noticeBoardSpot(layout);
+  const catSpot = petSpot(layout, state.places);
   const activities = parkActivities(layout);
   const playing = usePlaying(reactions);
   const street = layout.zones.find((z) => z.kind === 'street');
@@ -803,6 +805,9 @@ export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, o
             <ArcadeCabinet2D x={percent(activities.arcade.x + activities.arcade.w / 2, layout.width)} y={percent(activities.arcade.y + activities.arcade.h, layout.height)} width={activities.arcade.w * scale} onPlay={onArcade}/>
             <PickerCabinet x={percent(activities.picker.x + activities.picker.w / 2, layout.width)} y={percent(activities.picker.y + activities.picker.h, layout.height)} width={activities.picker.w * scale} disabled={!state.users.length} onPlay={onPicker}/>
           </>}
+          {pet && catSpot && (
+            <OfficeCat2D pet={pet} x={percent(catSpot.x, layout.width)} y={percent(catSpot.y, layout.height)} width={catSpot.size * scale} onOpen={onPet} />
+          )}
           {board && <NoticeBoard2D spot={board} width={layout.width} height={layout.height} votes={votes} />}
           {hasWeather(look) && <WeatherOverlay look={look} reduced={reduced} />}
           {street && <Traffic2D street={street} scale={scale} plan={planRef} daylight={look.daylight} reduced={reduced} />}

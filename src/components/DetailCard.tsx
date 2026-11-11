@@ -14,7 +14,8 @@ import { Mochi } from './Mochi.tsx';
 const GAP = 10;
 const EDGE = 8;
 
-const Card = styled.div`
+/** The card's frame, shared with the office cat's card. */
+export const Card = styled.div`
   position: fixed;
   z-index: 50;
   width: 260px;
@@ -82,7 +83,8 @@ function formatUpdated(iso: string | null): string {
   return `Updated ${today ? 'today' : d.toLocaleDateString()} at ${time}`;
 }
 
-function place(card: HTMLElement, anchor: HTMLElement): void {
+/** Puts a card beside what opened it, inside the window. */
+export function place(card: HTMLElement, anchor: HTMLElement): void {
   const rect = anchor.getBoundingClientRect();
   const { offsetWidth: w, offsetHeight: h } = card;
   let left = rect.right + GAP;

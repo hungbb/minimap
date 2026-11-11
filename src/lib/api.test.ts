@@ -52,7 +52,7 @@ function start() {
   const onState = mock.fn<(state: TeamState) => void>();
   const onConnection = mock.fn<(online: boolean) => void>();
   const onVotes = mock.fn<(votes: unknown[]) => void>();
-  const stop = subscribe(onState, onConnection, onVotes);
+  const stop = subscribe({ onState, onConnection, onVotes });
   const lastOnline = () => onConnection.mock.calls.at(-1)?.arguments[0];
   return { onState, onVotes, lastOnline, stop };
 }

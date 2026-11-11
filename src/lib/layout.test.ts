@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Place, TeamUser } from '../../shared/types.ts';
-import { computeLayout, isNotWorking, noticeBoardSpot, parkActivities, placeGroup, placeName, shareLength, type Zone } from './layout.ts';
+import { computeLayout, isNotWorking, noticeBoardSpot, parkActivities, petSpot, placeGroup, placeName, shareLength, type Zone } from './layout.ts';
 
 const office = (id: string): Place => ({ id, name: id, kind: 'office' });
 const TWO_OFFICES = [office('main'), office('other')];
@@ -290,4 +290,17 @@ test('reserving the park does not collapse a quiet lobby or beach beside a crowd
     assert.ok(layout.zones.find(z => z.id === 'off')!.w >= 22);
     assert.ok(layout.park!.w >= 38);
   }
+});
+
+test('the office cat sits inside the main office, near its bottom-right corner, in both layouts', () => {
+  const places = [{ id: 'main', name: 'Main Office', kind: 'office' as const }, { id: 'other', name: 'Other Office', kind: 'office' as const }];
+  for (const portrait of [false, true]) {
+    const layout = computeLayout(places, [], { portrait });
+    const spot = petSpot(layout, places)!;
+    const room = layout.zones.find((z) => z.id === 'main')!;
+    assert.ok(spot.x - spot.size / 2 > room.x + room.w / 2 && spot.x + spot.size / 2 < room.x + room.w, `${portrait}`);
+    assert.ok(spot.y > room.y + room.h / 2 && spot.y < room.y + room.h, `${portrait}`);
+    assert.ok(spot.size >= 3 && spot.size <= 6);
+  }
+  assert.equal(petSpot(computeLayout([], []), []), null);
 });
