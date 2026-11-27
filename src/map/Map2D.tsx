@@ -13,7 +13,9 @@ import { computeLayout, noticeBoardSpot, parkActivities, petSpot, type MapLayout
 import type { Ambience } from '../lib/ambience.ts';
 import { lookFor } from '../lib/look.ts';
 import { media, theme } from '../styles/theme.ts';
-import { DECOR, Tree, STREET_ART, Umbrella } from './decor.tsx';
+import { DECOR, FESTIVE_DECOR, Tree, STREET_ART, Umbrella } from './decor.tsx';
+import { ChristmasTreeArt, FairyLights, Holly, LampTrimmings, Pine, Santa2D, Sleigh2D, twinkleStyles } from './Christmas2D.tsx';
+import { christmasTreeSpot, isFestive, santaSpot } from '../lib/season.ts';
 import { ArcadeCabinet2D } from './ArcadeCabinet.tsx';
 import { OfficeCat2D } from './OfficeCat2D.tsx';
 import { parkTrees } from '../lib/parkTrees.ts';
@@ -34,6 +36,8 @@ const MapFill = styled.div`
   &[data-reflow] * { transition: none !important; }
   position: absolute;
   inset: 0;
+
+  ${twinkleStyles}
 `;
 
 // ---- Daylight -------------------------------------------------------------
@@ -313,12 +317,12 @@ const Crosswalk = styled(StreetPiece)`
  * Lamps stand on the curb and reach a little above the pavement, clear of the rooms
  * above at any street height. The left one keeps clear of the street's name.
  */
-function StreetDecor() {
+function StreetDecor({ festive }: { festive: boolean }) {
   const lamp = { bottom: `${100 - PAVEMENT}%`, height: `calc(${PAVEMENT}% + 8px)`, aspectRatio: '36 / 52', zIndex: 1 };
   return (
     <>
-      <StreetPiece style={{ ...lamp, left: 'max(16%, 150px)' }}><LampGlow />{STREET_ART.lamp}</StreetPiece>
-      <StreetPiece style={{ ...lamp, right: '24%' }}><LampGlow />{STREET_ART.lamp}</StreetPiece>
+      <StreetPiece style={{ ...lamp, left: 'max(16%, 150px)' }}><LampGlow />{STREET_ART.lamp}{festive && LampTrimmings}</StreetPiece>
+      <StreetPiece style={{ ...lamp, right: '24%' }}><LampGlow />{STREET_ART.lamp}{festive && LampTrimmings}</StreetPiece>
       <Crosswalk />
       <Puddle style={{ left: '22%', bottom: '14%', width: 'clamp(30px, 8%, 70px)' }} />
       <Puddle style={{ left: '61%', bottom: '38%', width: 'clamp(24px, 6%, 54px)' }} />
@@ -462,7 +466,7 @@ function percent(part: number, whole: number): string {
   return `${(part / whole) * 100}%`;
 }
 
-function ZoneRoom({ zone, layout, busy, snowy, assembled, dropTarget, onAssemble }: { zone: Zone; layout: MapLayout; busy: boolean; snowy: boolean; assembled: boolean; dropTarget: boolean; onAssemble: (trigger: HTMLElement)=>void }) {
+function ZoneRoom({ zone, layout, scale, busy, crowded, snowy, festive, assembled, dropTarget, onAssemble }: { zone: Zone; layout: MapLayout; scale: number; busy: boolean; crowded: boolean; snowy: boolean; festive: boolean; assembled: boolean; dropTarget: boolean; onAssemble: (trigger: HTMLElement)=>void }) {
   const style: CSSProperties = {
     left: percent(zone.x, layout.width),
     top: percent(zone.y, layout.height),
@@ -476,26 +480,33 @@ function ZoneRoom({ zone, layout, busy, snowy, assembled, dropTarget, onAssemble
         <RoomName>{zone.name}</RoomName>
         <RoomCount>{zone.count}</RoomCount>
         {assembled && <AssemblePlay data-assemble-play aria-label={`Assemble team from ${zone.name}`} aria-haspopup="dialog" onClick={event=>onAssemble(event.currentTarget)}>✦ Assemble</AssemblePlay>}
+        {festive && <Holly />}
       </RoomTitle>
       {snowy && <SnowCap />}
-      {DECOR[zone.kind].map(({ art, width, left, right, top, bottom, large, sway: sways }, i) => (
-        <DecorBox
-          key={i}
-          data-sway={sways || undefined}
-          $hidden={Boolean(large && busy)}
-          style={{
-            width: `${width}%`,
-            aspectRatio: '1',
-            left: left === undefined ? undefined : `${left}%`,
-            right: right === undefined ? undefined : `${right}%`,
-            top: top === undefined ? undefined : `${top}%`,
-            bottom: bottom === undefined ? undefined : `${bottom}%`,
-          }}
-        >
-          {art}
-        </DecorBox>
-      ))}
-      {zone.kind === 'street' && <StreetDecor />}
+      {festive && zone.kind !== 'street' && zone.kind !== 'off' && <FairyLights units={zone.w} scale={scale} />}
+      {(festive ? FESTIVE_DECOR : DECOR)[zone.kind].map(({ art, width, left, right, top, bottom, large, sway: sways, minWidth, maxWidth, crowdedWidth }, i) => {
+        const small = crowded && crowdedWidth !== undefined;
+        return (
+          <DecorBox
+            key={i}
+            data-sway={sways || undefined}
+            $hidden={Boolean(large && busy)}
+            style={{
+              width: `${small ? crowdedWidth : width}%`,
+              minWidth: small ? undefined : minWidth,
+              maxWidth: small ? undefined : maxWidth,
+              aspectRatio: '1',
+              left: left === undefined ? undefined : `${left}%`,
+              right: right === undefined ? undefined : `${right}%`,
+              top: top === undefined ? undefined : `${top}%`,
+              bottom: bottom === undefined ? undefined : `${bottom}%`,
+            }}
+          >
+            {art}
+          </DecorBox>
+        );
+      })}
+      {zone.kind === 'street' && <StreetDecor festive={festive} />}
     </Room>
   );
 }
@@ -689,12 +700,13 @@ function isPlain(look: Ambience): boolean {
   return look.daylight === 1 && look.warmth === 0 && look.weather.gloom === 0;
 }
 
-export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, onPet, pet, onAssemble, onPicker, look, votes, leaders, voteMarks, reactions, mover, onMove }: MapProps) {
+export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, onPet, pet, onAssemble, onPicker, look, season, votes, leaders, voteMarks, reactions, mover, onMove }: MapProps) {
   const attendance = officeAssembly(state);
   const fillRef = useRef<HTMLDivElement>(null);
   const planRef = useRef<HTMLDivElement>(null);
   const [dropZone, setDropZone] = useState<string | null>(null);
   const reduced = useReducedMotion();
+  const festive = isFestive(season);
   const daylight = {
     '--night': 1 - look.daylight,
     '--warm': look.warmth,
@@ -705,9 +717,10 @@ export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, o
     '--clouds': look.weather.clouds,
     '--wind': look.weather.wind,
     '--wet': look.weather.precipitation === 'rain' || look.weather.precipitation === 'drizzle' ? look.weather.intensity : 0,
-    '--snow': look.weather.precipitation === 'snow' ? 0.5 + look.weather.intensity * 0.5 : 0,
+    // At Christmas snow lies on the roofs whatever the weather.
+    '--snow': look.weather.precipitation === 'snow' ? 0.5 + look.weather.intensity * 0.5 : festive ? 0.9 : 0,
   } as CSSProperties;
-  const snowy = look.weather.precipitation === 'snow';
+  const snowy = look.weather.precipitation === 'snow' || festive;
   const wet = look.weather.precipitation !== 'none';
   const { width, height } = useElementSize(fillRef);
   const portrait = height > 0 && width / height < 0.95;
@@ -728,6 +741,8 @@ export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, o
   const activities = parkActivities(layout);
   const playing = usePlaying(reactions);
   const street = layout.zones.find((z) => z.kind === 'street');
+  const christmasTree = festive ? christmasTreeSpot(layout) : null;
+  const santa = christmasTree ? santaSpot(christmasTree) : null;
 
   // Fit the whole plan inside the available space, keeping its proportions.
   const scale = Math.min(width / layout.width, height / layout.height);
@@ -756,10 +771,13 @@ export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, o
       }
     : undefined;
 
-  function isBusy(zone: Zone): boolean {
-    if (portrait) return true;
+  /** Whether people's seats take up much of the room. */
+  function isCrowded(zone: Zone): boolean {
     const seat = [...layout.seats.values()].find((s) => s.zone.id === zone.id);
     return seat ? zone.count * seat.cell ** 2 > zone.w * zone.h * 0.3 : false;
+  }
+  function isBusy(zone: Zone): boolean {
+    return portrait || isCrowded(zone);
   }
 
   return (
@@ -769,6 +787,7 @@ export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, o
       data-daylight={look.phase}
       data-plain={isPlain(look) || undefined}
       data-windy={look.weather.wind > 0.2 || undefined}
+      data-season={season}
       ref={fillRef}
       style={daylight}
     >
@@ -791,16 +810,25 @@ export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, o
             </Park>
           )}
           {layout.zones.map((zone) => (
-            <ZoneRoom key={zone.id} zone={zone} layout={layout} busy={isBusy(zone)} snowy={snowy} assembled={attendance.unlocked && zone.kind==='office' && zone.count>0} dropTarget={dropZone === zone.id} onAssemble={onAssemble} />
+            <ZoneRoom key={zone.id} zone={zone} layout={layout} scale={scale} busy={isBusy(zone)} crowded={isCrowded(zone)} snowy={snowy} festive={festive} assembled={attendance.unlocked && zone.kind==='office' && zone.count>0} dropTarget={dropZone === zone.id} onAssemble={onAssemble} />
           ))}
-          {layout.park && parkTrees(layout.park).map((tree, i) => (
+          {layout.park && parkTrees(layout.park, { festive }).map((tree, i) => (
             <div key={`park-tree-${i}`} data-park-tree aria-hidden="true"
               style={{position: 'absolute', width: tree.size * scale, height: tree.size * 1.3 * scale,
                 left: percent(tree.x, layout.width), top: percent(tree.y, layout.height),
                 transform: 'translate(-50%, -100%)', zIndex: 1, pointerEvents: 'none'}}>
-              <DecorBox data-sway $hidden={false} style={{width:'100%', height:'100%', maxWidth:'none', maxHeight:'none'}}>{Tree}</DecorBox>
+              <DecorBox data-sway $hidden={false} style={{width:'100%', height:'100%', maxWidth:'none', maxHeight:'none'}}>{festive ? Pine : Tree}</DecorBox>
             </div>
           ))}
+          {christmasTree && (
+            <div data-christmas-tree aria-hidden="true"
+              style={{ position: 'absolute', width: christmasTree.w * scale, height: christmasTree.h * scale,
+                left: percent(christmasTree.x, layout.width), top: percent(christmasTree.y, layout.height),
+                transform: 'translate(-50%, -100%)', zIndex: 1, pointerEvents: 'none' }}>
+              <ChristmasTreeArt />
+            </div>
+          )}
+          {santa && <Santa2D x={percent(santa.x, layout.width)} y={percent(santa.y, layout.height)} width={santa.size * scale} />}
           {activities && <>
             <ArcadeCabinet2D x={percent(activities.arcade.x + activities.arcade.w / 2, layout.width)} y={percent(activities.arcade.y + activities.arcade.h, layout.height)} width={activities.arcade.w * scale} onPlay={onArcade}/>
             <PickerCabinet x={percent(activities.picker.x + activities.picker.w / 2, layout.width)} y={percent(activities.picker.y + activities.picker.h, layout.height)} width={activities.picker.w * scale} disabled={!state.users.length} onPlay={onPicker}/>
@@ -809,7 +837,8 @@ export default function Map2D({ state, isDimmed, selected, onSelect, onArcade, o
             <OfficeCat2D pet={pet} x={percent(catSpot.x, layout.width)} y={percent(catSpot.y, layout.height)} width={catSpot.size * scale} onOpen={onPet} />
           )}
           {board && <NoticeBoard2D spot={board} width={layout.width} height={layout.height} votes={votes} leaders={leaders} />}
-          {hasWeather(look) && <WeatherOverlay look={look} reduced={reduced} />}
+          {(hasWeather(look) || festive) && <WeatherOverlay look={look} reduced={reduced} festive={festive} />}
+          {festive && <Sleigh2D width={Math.max(110, layout.width * scale * 0.16)} />}
           {street && <Traffic2D street={street} scale={scale} plan={planRef} daylight={look.daylight} reduced={reduced} />}
           {street && voteMarks?.result && <ResultBanner2D result={voteMarks.result} street={street} width={layout.width} height={layout.height} />}
           {state.users.map((user) => {

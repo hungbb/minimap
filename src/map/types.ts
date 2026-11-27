@@ -5,6 +5,7 @@ import type { Ambience } from '../lib/ambience.ts';
 import type { Leader } from '../lib/noticeBoard.ts';
 import type { PetShown } from '../lib/petLook.ts';
 import type { Reaction } from '../lib/voteReactions.ts';
+import type { Season } from '../lib/season.ts';
 
 /** Asks the map to bring a person into view. `at` lets the same person be requested twice. */
 export interface FocusRequest {
@@ -41,6 +42,8 @@ export interface MapProps {
   onPet: (trigger: HTMLElement) => void;
   /** The time of day and weather to show (lib/ambience.ts). */
   look: Ambience;
+  /** Christmas lights, trees, snow, Santa and his sleigh all December (lib/season.ts). */
+  season: Season;
   /** The team's votes, as anyone may see them. The notice board shows the open ones. */
   votes: VoteView[];
   /** The reward points leaders for the notice board's points note, or null before they load. */

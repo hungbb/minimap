@@ -18,7 +18,7 @@ import { wishReactions } from '../lib/celebrateLook.ts';
 import { moverFor, withMove, type PendingMove } from '../lib/dragMove.ts';
 import { newFeed, petShown } from '../lib/petLook.ts';
 import { topLeaders } from '../lib/noticeBoard.ts';
-import { useAmbience, useNow, useReducedMotion, useTeamState } from '../lib/hooks.ts';
+import { useAmbience, useNow, useReducedMotion, useSeason, useTeamState } from '../lib/hooks.ts';
 import { closeTime, diffUpdates, mergeUpdates, seedUpdates, visibleUpdates, type RecentUpdate } from '../lib/recentUpdates.ts';
 import { reactions as planReactions, type VoteSnapshot } from '../lib/voteReactions.ts';
 import { shownStatus } from '../lib/status.ts';
@@ -464,6 +464,7 @@ export function MonitorPage() {
   const [weatherOn, setWeatherOn] = useState(() => readSaved(WEATHER_KEY) !== 'off');
   const weatherAllowed = Boolean(state?.settings.officeName) && state?.settings.mapWeather !== false;
   const look = useAmbience(state?.weather ?? null, weatherAllowed && weatherOn);
+  const season = useSeason();
   // A wall TV can hide the "hasn't voted" markers and the results banner.
   const [voteMarksOn, setVoteMarksOn] = useState(() => readSaved(VOTE_MARKS_KEY) !== 'off');
   // Votes close by the clock, with no message from the server, or early with one.
@@ -656,7 +657,7 @@ export function MonitorPage() {
     if (state && selection && !selectedUser) closeCard();
   }, [state, selection, selectedUser, closeCard]);
 
-  const mapProps = state && { state, isDimmed, selected: selection?.username ?? null, focus, onSelect: select, onArcade: openArcade, pet, onPet: openPet, onAssemble: openAssembly, onPicker: openPicker, look, votes: allVotes, leaders, voteMarks, reactions, mover, onMove: moveMe };
+  const mapProps = state && { state, isDimmed, selected: selection?.username ?? null, focus, onSelect: select, onArcade: openArcade, pet, onPet: openPet, onAssemble: openAssembly, onPicker: openPicker, look, season, votes: allVotes, leaders, voteMarks, reactions, mover, onMove: moveMe };
 
   return (
     <Page>

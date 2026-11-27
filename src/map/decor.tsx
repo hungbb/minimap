@@ -1,6 +1,7 @@
 // Furniture drawn on the 2D map.
 import type { ReactNode } from 'react';
 import type { ZoneKind } from '../lib/layout.ts';
+import { ChristmasTreeArt, HouseTrimmings, Pine, Snowman } from './Christmas2D.tsx';
 
 const INK = '#2a2657';
 
@@ -22,15 +23,20 @@ const Board = (
   </svg>
 );
 
-const House = (
-  <svg viewBox="0 0 80 72" width="100%" height="100%">
-    <path d="M12 34h56v36H12Z" fill="#fff4d6" {...joined} />
-    <path d="M3 38 40 4l37 34Z" fill="#ff8fb3" {...joined} />
-    <rect x="33" y="46" width="15" height="24" rx="3" fill="#b7a6ff" {...line} />
-    <rect x="17" y="43" width="11" height="11" rx="2" fill="#8fddf5" stroke={INK} strokeWidth="2.5" />
-    <rect x="53" y="43" width="11" height="11" rx="2" fill="#8fddf5" stroke={INK} strokeWidth="2.5" />
-  </svg>
-);
+function houseArt(trimmings?: ReactNode) {
+  return (
+    <svg viewBox="0 0 80 72" width="100%" height="100%">
+      <path d="M12 34h56v36H12Z" fill="#fff4d6" {...joined} />
+      <path d="M3 38 40 4l37 34Z" fill="#ff8fb3" {...joined} />
+      <rect x="33" y="46" width="15" height="24" rx="3" fill="#b7a6ff" {...line} />
+      <rect x="17" y="43" width="11" height="11" rx="2" fill="#8fddf5" stroke={INK} strokeWidth="2.5" />
+      <rect x="53" y="43" width="11" height="11" rx="2" fill="#8fddf5" stroke={INK} strokeWidth="2.5" />
+      {trimmings}
+    </svg>
+  );
+}
+
+const House = houseArt();
 
 export const Tree = (
   <svg viewBox="0 0 40 52" width="100%" height="100%">
@@ -73,6 +79,12 @@ export interface DecorItem {
   large?: boolean;
   /** Sways in the wind. */
   sway?: boolean;
+  /** The widest it may grow, in pixels, when 90 is too small. */
+  maxWidth?: number;
+  /** The narrowest it may shrink, in pixels, so it still shows in a narrow room. */
+  minWidth?: number;
+  /** Its width once people fill the room, so it stays in its corner instead of behind them. */
+  crowdedWidth?: number;
 }
 
 // Positions are percentages of the zone, chosen to stay clear of the title tab.
@@ -90,6 +102,27 @@ export const DECOR: Record<ZoneKind, DecorItem[]> = {
   // The notice board stands at the right edge (NoticeBoard2D.tsx), so the mat lies by the door.
   lobby: [{ art: Mat, left: 3, bottom: 12, width: 13, large: true }],
   // The street lines its things up with its pavement and road instead: see STREET_ART.
+  street: [],
+};
+
+// All December (lib/season.ts): a little Christmas tree in the office instead of one of its
+// plants (the cat sits by the other), lights and a wreath on the house, a pine, and a snowman.
+export const FESTIVE_DECOR: Record<ZoneKind, DecorItem[]> = {
+  office: [
+    { art: Board, right: 3, top: 2.5, width: 15, large: true },
+    // Wide enough to stand out in a narrow room; DecorBox caps it in a wide one.
+    { art: <ChristmasTreeArt />, left: 0.5, bottom: 2, width: 28, minWidth: 80, maxWidth: 150, crowdedWidth: 12 },
+    { art: Plant, right: 1.5, bottom: 3, width: 7 },
+  ],
+  wfh: [
+    { art: houseArt(HouseTrimmings), right: 3, top: 5, width: 25, large: true },
+    { art: Pine, left: 3, bottom: 5, width: 11, sway: true },
+  ],
+  off: [
+    { art: Parasol, left: 6, top: 22, width: 17 },
+    { art: Snowman, left: 34, bottom: 6, width: 12 },
+  ],
+  lobby: DECOR.lobby,
   street: [],
 };
 

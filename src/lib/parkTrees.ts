@@ -1,6 +1,16 @@
 // Stable random scenery shared by the two maps; foliage stays behind the park activities.
 import { parkActivities, type Rect } from './layout.ts';
-export function parkTrees(park: Rect) {
+import { christmasTreeReach, christmasTreeSpot, parkGap } from './season.ts';
+
+/** How far a pine's branches reach out from its trunk on both maps, as a share of its size. */
+const PINE_REACH = 0.4;
+
+/**
+ * The park's trees: three along the back, and one in the first gap between the notice
+ * board and the games. At Christmas the big tree takes that gap (season.ts), so it's left out,
+ * and so is any tree along the back that would stand inside the big tree.
+ */
+export function parkTrees(park: Rect, { festive = false } = {}) {
   let seed = 731;
   const random = () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -16,17 +26,14 @@ export function parkTrees(park: Rect) {
       size,
     };
   });
-  const activities = parkActivities({ park })!;
-  const gaps = [
-    [activities.board.x + activities.board.w, activities.arcade.x],
-    [activities.arcade.x + activities.arcade.w, activities.picker.x],
-  ];
-  for (const [left, right] of gaps) {
-    const gap = right! - left!;
-    if (gap < 4) continue;
-    const size = Math.min(6, gap * 0.7, park.h * 0.4);
-    trees.push({ x: (left! + right!) / 2, y: park.y + park.h * (0.72 + random() * 0.16), size });
-    break;
+  const gap = parkGap(park, parkActivities({ park })!);
+  if (festive) {
+    const big = christmasTreeSpot({ park });
+    return big ? trees.filter((tree) => Math.abs(tree.x - big.x) >= christmasTreeReach(big) + tree.size * PINE_REACH) : trees;
+  }
+  if (gap) {
+    const size = Math.min(6, gap.w * 0.7, park.h * 0.4);
+    trees.push({ x: gap.x + gap.w / 2, y: park.y + park.h * (0.72 + random() * 0.16), size });
   }
   return trees;
 }

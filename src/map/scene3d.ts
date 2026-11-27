@@ -18,6 +18,8 @@ import { box, clampTo, contains, grow, hopHeight, pickSpot, steer, type Box } fr
 import type { PetShown } from '../lib/petLook.ts';
 import type { Reaction, ReactionKind } from '../lib/voteReactions.ts';
 import { parkTrees } from '../lib/parkTrees.ts';
+import { christmasTreeScale3d, christmasTreeSpot, isFestive, TREE_MODEL, santaSpot, SLEIGH_TRIP_SECONDS, sleighProgress, twinkle, type Season } from '../lib/season.ts';
+import { addLightString, lightBulbs, createChristmasTree, createPine, createSanta, createSleigh, createSnowman, createWreath, festiveMaterials, type FestiveTools } from './christmas3d.ts';
 import { createTraffic, parkedTraffic, stepTraffic, stepTrafficDodge, streetRoad, type Road, type TrafficDodge } from '../lib/traffic.ts';
 import { createTraffic3D } from './traffic3d.ts';
 import { createPickerCabinet } from './pickerCabinet3d.ts';
@@ -77,6 +79,8 @@ export interface Scene3D {
   setMover(username: string | null): void;
   /** The office cat's name, size and mood (lib/petLook.ts). Null hides it. */
   setPet(pet: PetShown | null): void;
+  /** Christmas lights, trees, snow, Santa and his sleigh all December (lib/season.ts). */
+  setSeason(season: Season): void;
   destroy(): void;
 }
 
@@ -501,11 +505,118 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
   let snowCaps: THREE.Mesh[] = [];
   let trees: { tree: THREE.Group; phase: number }[] = [];
 
+  // ---- Christmas ------------------------------------------------------------
+  // All December the town gets its Christmas look, built with the rooms: Santa stands by the
+  // big tree and his sleigh flies over (lib/season.ts, christmas3d.ts).
+  let season: Season = 'none';
+  let festive = false;
+  const festiveLook = festiveMaterials(ramp);
+  const festiveTools: FestiveTools = { mat, mesh, bulbs: festiveLook.bulbs, star: festiveLook.star, snow: snowMaterial };
+  let santaWave: THREE.Group | null = null;
+  // The sleigh belongs to the sky, like the blimp, so it stays when the town is rebuilt.
+  const sleigh = createSleigh(festiveTools);
+  sleigh.visible = false;
+  sleigh.scale.setScalar(1.3);
+  scene.add(sleigh);
+  // A soft glow round the sleigh, brighter after dark.
+  const sleighGlow = new THREE.SpriteMaterial({ map: glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const sleighHalo = new THREE.Sprite(sleighGlow);
+  sleighHalo.position.set(0.5, 2.2, 0);
+  sleighHalo.scale.setScalar(7);
+  sleigh.add(sleighHalo);
+  // A trail of magic sparkles behind it, along the path it has just flown. Worked out from
+  // the sleigh's own path each frame, so it keeps no state of its own.
+  const TRAIL = 70;
+  const trailPositions = new Float32Array(TRAIL * 3);
+  // Each sparkle fades out through its alpha, so the trail stays gold against a bright sky.
+  const trailColours = new Float32Array(TRAIL * 4);
+  const trailGeometry = new THREE.BufferGeometry();
+  trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+  trailGeometry.setAttribute('color', new THREE.BufferAttribute(trailColours, 4));
+  const trailMaterial = new THREE.PointsMaterial({ size: 4.5, map: glowTexture(), vertexColors: true, transparent: true, depthWrite: false, toneMapped: false });
+  const trail = new THREE.Points(trailGeometry, trailMaterial);
+  trail.frustumCulled = false;
+  trail.visible = false;
+  scene.add(trail);
+  // Each sparkle's own scatter round the path, fixed so the trail doesn't flicker about.
+  const scatter = Array.from({ length: TRAIL }, (_, i) => [Math.sin(i * 12.9898) * 0.5, Math.sin(i * 78.233) * 0.5, Math.sin(i * 39.425) * 0.5]);
+  const TRAIL_TINTS = [new THREE.Color(0xffe066), new THREE.Color(0xffc21f), new THREE.Color(0xfff6d0), new THREE.Color(0xffc21f)];
+
+  function animateChristmas(time: number) {
+    if (!festive) return;
+    // Each colour twinkles in its turn, from nearly dark to full, so it shows in daylight
+    // too, and the lights glow brighter after dark.
+    lightBulbs(festiveLook.bulbs, (i) => ((twinkle(i, time, reducedMotion) - 0.35) / 0.65) ** 2, lampLevel);
+    festiveLook.star.emissiveIntensity = 0.55 + lampLevel * 0.6;
+    if (santaWave) santaWave.rotation.z = reducedMotion ? 0 : Math.sin(time * 5) * 0.35;
+    const progress = sleighProgress(time, reducedMotion);
+    sleigh.visible = progress !== null;
+    trail.visible = progress !== null;
+    if (progress === null) return;
+    // Across the sky behind the town, from left to right, bobbing as it goes.
+    const span = layout.width * 0.7;
+    const height = weather.fog > 0 ? 13 : 20;
+    const bobAt = (t: number) => (reducedMotion ? 0 : Math.sin(t * 2.4));
+    const bob = bobAt(time);
+    sleigh.position.set(-span + progress * 2 * span, height + bob * 0.6, -layout.height * 0.3);
+    sleigh.rotation.z = bob * 0.06;
+    sleighGlow.opacity = 0.35 + lampLevel * 0.5;
+
+    // Sparkles where the sleigh was a moment ago: the older, the dimmer and the lower they hang.
+    const step = 0.0035;
+    for (let k = 0; k < TRAIL; k++) {
+      const share = Math.max(0, progress - k * step);
+      const [sx, sy, sz] = scatter[k]!;
+      const spread = 0.3 + k * 0.03;
+      trailPositions.set([
+        -span + share * 2 * span - 2.4 + sx! * spread,
+        height + bobAt(time - k * step * SLEIGH_TRIP_SECONDS) * 0.6 + 1.6 - k * 0.025 + sy! * spread,
+        -layout.height * 0.3 + sz! * spread * 2,
+      ], k * 3);
+      const fade = Math.min(1, 1.4 * (1 - k / TRAIL));
+      const glint = reducedMotion ? 1 : 0.55 + 0.45 * Math.sin(time * 9 + k * 2.3);
+      const tint = TRAIL_TINTS[k % TRAIL_TINTS.length]!;
+      trailColours.set([tint.r, tint.g, tint.b, fade * glint], k * 4);
+    }
+    trailGeometry.attributes.position!.needsUpdate = true;
+    trailGeometry.attributes.color!.needsUpdate = true;
+  }
+
+  /** The big tree in the park, with Santa beside it. */
+  function addChristmasTree(parent: THREE.Group) {
+    const spot = christmasTreeSpot(layout);
+    if (!spot || !layout.park) return;
+    // Towards the back of the park, so the board and the games in front don't hide it.
+    const at = toWorld(spot.x, layout.park.y + layout.park.h * 0.36);
+    const { group: tree, star } = createChristmasTree(festiveTools);
+    // parkTrees keeps the park's pines out of its reach (christmasTreeReach).
+    const size = christmasTreeScale3d(spot);
+    tree.position.set(at.x, 1, at.z);
+    tree.scale.setScalar(size);
+    parent.add(tree);
+    block(at.x, at.z, TREE_MODEL.reach * size, TREE_MODEL.reach * size);
+    const glow = new THREE.Sprite(lampGlow);
+    glow.position.copy(star.position);
+    glow.scale.setScalar(6);
+    tree.add(glow);
+    addNightLight(parent, at.x, 7, at.z + 4, { color: 0xffe2a0, strength: 1.4, distance: 12 });
+
+    const stand = santaSpot(spot);
+    const feet = toWorld(stand.x, layout.park.y + layout.park.h * 0.8);
+    const santa = createSanta(festiveTools);
+    santa.group.position.set(feet.x, 1, feet.z);
+    santa.group.scale.setScalar(stand.size / 2.6);
+    santa.group.rotation.y = -0.3;
+    parent.add(santa.group);
+    block(feet.x, feet.z, stand.size / 2, stand.size / 3);
+    santaWave = santa.wave;
+  }
+
   function addSnow(parent: THREE.Object3D, geometry: THREE.BufferGeometry, { x = 0, y = 0, z = 0, squash = 1, turn = 0 } = {}) {
     const cap = mesh(geometry, snowMaterial, { x, y, z, shadow: false });
     cap.scale.y = squash;
     cap.rotation.y = turn;
-    cap.visible = weather.precipitation === 'snow';
+    cap.visible = weather.precipitation === 'snow' || festive;
     parent.add(cap);
     snowCaps.push(cap);
   }
@@ -521,7 +632,8 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
   }
 
   function showWeatherDetails() {
-    const snowing = weather.precipitation === 'snow';
+    // At Christmas snow lies on the roofs and trees whatever the weather.
+    const snowing = weather.precipitation === 'snow' || festive;
     for (const cap of snowCaps) cap.visible = snowing;
     const wet = weather.precipitation === 'rain' || weather.precipitation === 'drizzle';
     puddleMaterial.opacity = wet ? 0.35 + weather.intensity * 0.35 : 0;
@@ -553,11 +665,16 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     const tree = new THREE.Group();
     tree.position.set(x, 1, z);
     tree.scale.setScalar(scale);
-    tree.add(mesh(new THREE.CylinderGeometry(0.55, 0.75, 3, 8), 0xc99467, { y: 1.5 }));
-    tree.add(mesh(new THREE.IcosahedronGeometry(2.5, 1), 0x63c96c, { y: 4.6 }));
-    tree.add(mesh(new THREE.IcosahedronGeometry(1.7, 1), 0x7ad67f, { x: 1, y: 6, z: 0.4 }));
-    addSnow(tree, new THREE.IcosahedronGeometry(2.1, 1), { y: 6.1, squash: 0.45 });
-    addSnow(tree, new THREE.IcosahedronGeometry(1.4, 1), { x: 1, y: 7.1, z: 0.4, squash: 0.45 });
+    if (festive) {
+      // A snowy pine all December.
+      tree.add(createPine(festiveTools));
+    } else {
+      tree.add(mesh(new THREE.CylinderGeometry(0.55, 0.75, 3, 8), 0xc99467, { y: 1.5 }));
+      tree.add(mesh(new THREE.IcosahedronGeometry(2.5, 1), 0x63c96c, { y: 4.6 }));
+      tree.add(mesh(new THREE.IcosahedronGeometry(1.7, 1), 0x7ad67f, { x: 1, y: 6, z: 0.4 }));
+      addSnow(tree, new THREE.IcosahedronGeometry(2.1, 1), { y: 6.1, squash: 0.45 });
+      addSnow(tree, new THREE.IcosahedronGeometry(1.4, 1), { x: 1, y: 7.1, z: 0.4, squash: 0.45 });
+    }
     parent.add(tree);
     trees.push({ tree, phase: x * 0.37 + z * 0.21 });
   }
@@ -582,7 +699,24 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
       group.add(mesh(new THREE.BoxGeometry(5, 2.6, 0.2), windowGlass, { x: wx, y: 3.9, z: c.z - z.h / 2 + 0.75, shadow: false }));
     }
     addPlant(group, c.x + z.w / 2 - 2.2, c.z - z.h / 2 + 2.4);
-    addPlant(group, c.x - z.w / 2 + 2.4, c.z + z.h / 2 - 2.4);
+    if (festive) {
+      // A little Christmas tree in place of the front plant (the cat sits by the other), and
+      // lights along the tops of the walls.
+      const tx = c.x - z.w / 2 + 3.1;
+      const tz = c.z + z.h / 2 - 3.1;
+      block(tx, tz, 2.4, 2.4);
+      const tree = createChristmasTree(festiveTools).group;
+      tree.position.set(tx, 1, tz);
+      tree.scale.setScalar(0.7);
+      group.add(tree);
+      const top = WALL_H + 0.5;
+      const back = c.z - z.h / 2 + 0.9;
+      const left = c.x - z.w / 2 + 0.9;
+      addLightString(group, festiveTools, new THREE.Vector3(left, top, back), new THREE.Vector3(c.x + z.w / 2 - 0.5, top, back));
+      addLightString(group, festiveTools, new THREE.Vector3(left, top, back), new THREE.Vector3(left, top, c.z + z.h / 2 - 0.5));
+    } else {
+      addPlant(group, c.x - z.w / 2 + 2.4, c.z + z.h / 2 - 2.4);
+    }
     addNightLight(group, c.x, WALL_H + 4, c.z - z.h * 0.1, { strength: 2.6, distance: Math.max(z.w, z.h) * 0.72 });
   }
 
@@ -600,6 +734,18 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     // Lights up at night like the office windows.
     group.add(mesh(new THREE.BoxGeometry(1.6, 1.4, 0.2), windowGlass, { x: hx + 2.4, y: 3.6, z: hz + 3.55, shadow: false }));
     addNightLight(group, hx, 4.5, hz + 6, { strength: 1.6, distance: 13 });
+    if (festive) {
+      // A wreath on the door, and lights along the eaves the camera sees.
+      const wreath = createWreath(festiveTools);
+      wreath.position.set(hx, 3.3, hz + 3.75);
+      group.add(wreath);
+      const eave = 5.4;
+      const half = 5.1;
+      const corner = (dx: number, dz: number) => new THREE.Vector3(hx + dx * half, eave, hz + dz * half);
+      addLightString(group, festiveTools, corner(-1, 1), corner(1, 1), 0.25);
+      addLightString(group, festiveTools, corner(-1, -1), corner(-1, 1), 0.25);
+      addLightString(group, festiveTools, corner(1, -1), corner(1, 1), 0.25);
+    }
     addTree(group, c.x - z.w / 2 + 3, c.z + z.h / 2 - 3);
   }
 
@@ -614,6 +760,17 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     group.add(mesh(new THREE.CylinderGeometry(0.2, 0.2, 3.4, 6), 0xffffff, { x: px, y: 2.7, z: pz }));
     block(px, pz, 0.6, 0.6);
     group.add(mesh(new THREE.ConeGeometry(3, 1.3, 10), 0xff8fb3, { x: px, y: 4.8, z: pz }));
+    if (festive) {
+      // A snowman on the sand, where the 2D map has its own.
+      const sx = c.x - z.w / 2 + z.w * 0.4;
+      const sz = c.z + z.h / 2 - 3;
+      const snowman = createSnowman(festiveTools);
+      snowman.position.set(sx, 1, sz);
+      snowman.scale.setScalar(0.75);
+      snowman.rotation.y = -0.3;
+      group.add(snowman);
+      block(sx, sz, 1.2, 1.2);
+    }
   }
 
   function addLobby(group: THREE.Group, z: Zone, c: Point) {
@@ -631,6 +788,12 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     glow.scale.setScalar(6);
     group.add(glow);
     addNightLight(group, x, 6.6, z + 0.6, { color: 0xffd27a, strength: 2.8, distance: 17 });
+    if (festive) {
+      // A wreath on the post, facing the camera, as on the 2D map.
+      const wreath = createWreath(festiveTools);
+      wreath.position.set(x, 4.2, z + 0.25);
+      group.add(wreath);
+    }
   }
 
   // Runs off both sides of the island: a pavement, then the road and its markings.
@@ -686,6 +849,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     nightLights = [];
     snowCaps = [];
     trees = [];
+    santaWave = null;
     zoneLabels.clear();
     scenery = [];
     center = { x: layout.width / 2, z: layout.height / 2 };
@@ -709,10 +873,11 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     world.add(island);
 
     if (layout.park) {
-      for (const tree of parkTrees(layout.park)) {
+      for (const tree of parkTrees(layout.park, { festive })) {
         const at = toWorld(tree.x, tree.y);
         addTree(world, at.x, at.z, tree.size / 7.7);
       }
+      if (festive) addChristmasTree(world);
     }
 
     for (const z of layout.zones) {
@@ -1406,6 +1571,7 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
     animateVoteMarks(time);
     animateBursts(dt, time);
     animateCat(dt, time);
+    animateChristmas(time);
 
     if (road) {
       const people = [...characters.values()].filter(c => !c.held).map(c => ({
@@ -1800,6 +1966,17 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
       if (next) officeCat.set(next);
     },
 
+    setSeason(next) {
+      if (next === season) return;
+      season = next;
+      festive = isFestive(next);
+      sleigh.visible = false;
+      trail.visible = false;
+      // The trees, lights and Santa are part of the town, so it's built again.
+      if (buildKey) buildWorld();
+      showWeatherDetails();
+    },
+
     setVoteMarks(marks) {
       voteMarks = marks;
       for (const c of characters.values()) markBallot(c, true);
@@ -1878,6 +2055,12 @@ export function createScene3D(root: HTMLElement, { onPick, onCamera, onContextGo
       puff.dispose();
       shadowOnly.dispose();
       snowMaterial.dispose();
+      for (const material of [...festiveLook.bulbs, festiveLook.star]) material.dispose();
+      sleighGlow.map?.dispose();
+      sleighGlow.dispose();
+      trailGeometry.dispose();
+      trailMaterial.map?.dispose();
+      trailMaterial.dispose();
       puddleMaterial.dispose();
       ramp.dispose();
       stopWatchingContext();

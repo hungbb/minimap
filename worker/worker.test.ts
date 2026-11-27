@@ -321,29 +321,36 @@ test('the office cat survives Durable Object eviction, and open maps get it as i
   assert.equal((await live.nextEvent('pet')).name, 'Tofu');
 });
 
-test('reward points, settings and stays survive Durable Object eviction, and maps get a points event', async (t) => {
-  const { api, join, me, evict, events } = await setup(t);
-  const lan = await join('lan');
-  const admin = (await api('GET', '/api/points/admin', undefined, ADMIN)).json;
-  const settings = { ...admin.settings, claimWindows: [{ from: '18:30', to: '19:00' }] };
-  assert.equal((await api('PATCH', '/api/points/admin', settings, ADMIN)).status, 200);
-  assert.equal((await api('POST', '/api/points/admin/adjust', { username: 'lan', amount: 25, reason: 'Welcome' }, ADMIN)).status, 200);
-  assert.equal((await me(lan, { place: 'main' })).status, 200);
-  await evict();
+test(
+  'reward points, settings and stays survive Durable Object eviction, and maps get a points event',
+  // Office hours and claim windows must start at or after the morning reset, so the reset is at
+  // midnight rather than the usual 12 hours from now, which falls after them half the day. The
+  // reset would run mid-test only in the minute after midnight.
+  { skip: new Date().toISOString().slice(11, 16) === '00:00' && 'too close to the reset' },
+  async (t) => {
+    const { api, join, me, evict, events } = await setup(t, { ADMIN_PASSWORD: 'secret', RESET_AT: '00:00' });
+    const lan = await join('lan');
+    const admin = (await api('GET', '/api/points/admin', undefined, ADMIN)).json;
+    const settings = { ...admin.settings, claimWindows: [{ from: '18:30', to: '19:00' }] };
+    assert.equal((await api('PATCH', '/api/points/admin', settings, ADMIN)).status, 200);
+    assert.equal((await api('POST', '/api/points/admin/adjust', { username: 'lan', amount: 25, reason: 'Welcome' }, ADMIN)).status, 200);
+    assert.equal((await me(lan, { place: 'main' })).status, 200);
+    await evict();
 
-  const mine = (await api('GET', '/api/points/me', undefined, { Authorization: `Bearer ${lan}` })).json;
-  assert.deepEqual([mine.inOffice, mine.toClaim], [true, 0]);
-  // Nothing earned yet in the seconds this test takes, so there is nothing to claim.
-  assert.equal((await api('POST', '/api/points/claim', {}, { Authorization: `Bearer ${lan}` })).status, 409);
-  const view = (await api('GET', '/api/points')).json;
-  assert.equal(view.board[0].balance, 25);
-  assert.deepEqual(view.settings.claimWindows, settings.claimWindows);
-  assert.equal(typeof view.resetAt, 'string'); // The Worker's RESET_AT.
-  const backup = (await api('GET', '/api/admin/data', undefined, ADMIN)).json;
-  assert.deepEqual(backup.points.settings.claimWindows, settings.claimWindows);
-  const live = await events();
-  assert.equal((await live.nextEvent('points')).board[0].username, 'lan');
-});
+    const mine = (await api('GET', '/api/points/me', undefined, { Authorization: `Bearer ${lan}` })).json;
+    assert.deepEqual([mine.inOffice, mine.toClaim], [true, 0]);
+    // Nothing earned yet in the seconds this test takes, so there is nothing to claim.
+    assert.equal((await api('POST', '/api/points/claim', {}, { Authorization: `Bearer ${lan}` })).status, 409);
+    const view = (await api('GET', '/api/points')).json;
+    assert.equal(view.board[0].balance, 25);
+    assert.deepEqual(view.settings.claimWindows, settings.claimWindows);
+    assert.equal(typeof view.resetAt, 'string'); // The Worker's RESET_AT.
+    const backup = (await api('GET', '/api/admin/data', undefined, ADMIN)).json;
+    assert.deepEqual(backup.points.settings.claimWindows, settings.claimWindows);
+    const live = await events();
+    assert.equal((await live.nextEvent('points')).board[0].username, 'lan');
+  },
+);
 
 test('birthdays and wishes survive Durable Object eviction, and open maps get them as their own event', async (t) => {
   const { api, join, evict, events } = await setup(t);

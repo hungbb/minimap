@@ -197,6 +197,12 @@ People invited to an open vote that has **Show on the map** turned on, and who h
 
 To preview another time of day on one screen, add `?time=dawn`, `day`, `dusk`, `night` or a time such as `?time=21:30` (in the time zone of the screen showing the map, not the office's) to the map's address (for example `/?mode=3d&time=dusk`). To preview weather, add `?weather=` with `clear`, `partly`, `windy`, `cloudy`, `fog`, `drizzle`, `rain`, `downpour`, `snow` or `storm`. Previews show even when the effects are turned off. They can be combined, as in `/?weather=storm&time=night`, and only change that screen. Without an office location, the preview uses a 06:00 sunrise and an 18:00 sunset.
 
+### Christmas on the map
+
+All of December, from the 1st to the 31st, both maps wear a Christmas look. There's a big decorated tree with a star and presents in the park, a decorated tree with presents in each office, snowy pines, a snowman on the beach, a wreath on the house and on each street lamp, and holly on every room's name. Pine garlands with red bows hang along the rooms, with red, green and gold fairy lights that twinkle and glow brighter after dark, snow lies on the roofs whatever the weather, and a few flakes drift down. Santa stands by the big tree waving, and his sleigh and reindeer, lit with fairy lights and a lantern, fly over the town every so often, leaving a trail of golden sparkles. When an office fills up, its Christmas tree shrinks into its corner so nobody sits behind it. The dates follow the screen showing the map, not a setting, so nothing needs turning on. With reduced motion turned on, the lights stay steady and the sleigh waits in the sky.
+
+To preview it on one screen, add `?season=christmas` to the map's address, for example `/?mode=3d&season=christmas&time=night`. `?season=none` shows the ordinary look in December.
+
 ## Settings
 
 Set these in `.env`, then restart.

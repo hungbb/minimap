@@ -259,6 +259,16 @@ Paths are from the project root. Function names are given instead of line number
 | Account and admin panels | `src/components/CelebratePanel.tsx` (in `MemberEditor.tsx`, account view), `src/components/BirthdayInput.tsx` (shared), `src/components/CelebrateAdminPanel.tsx` (on `AdminPage.tsx`) |
 | Tests | `shared/celebrate.test.ts`, `server/celebrate/celebrate.test.ts`, `src/lib/celebrateLook.test.ts`, the birthdays test in `worker/worker.test.ts` |
 
+### Christmas look
+| Feature | Code |
+|---|---|
+| When it shows (all December, Santa and his sleigh included, by the screen's own date), the `?season=` preview, light colours and twinkling, where the big tree and Santa stand, the sleigh's trips | `src/lib/season.ts` (`seasonOn`, `isFestive`, `previewSeason`, `twinkle`, `bulbSpots`, `christmasTreeSpot`, `christmasTreeReach`, `christmasTreeScale3d`, `parkGap`, `santaSpot`, `sleighProgress`), `src/lib/season.test.ts`; `useSeason` in `hooks.ts`, passed as `season` in `MapProps` from `MonitorPage.tsx` |
+| 2D | `src/map/Christmas2D.tsx` (`ChristmasTreeArt`, `Pine`, `Snowman`, `HouseTrimmings`, `FairyLights` (the garland with bows and lights), `Holly` (on room names, also used by the 3D map's labels in `Map3D.tsx`), `LampTrimmings`, `Santa2D`, `Sleigh2D` with its `MagicTrail`, `twinkleStyles` on the map root); `FESTIVE_DECOR` in `src/map/decor.tsx` (the office tree's `crowdedWidth`: smaller once the room fills up); placed in `Map2D.tsx` (`ZoneRoom`, `StreetDecor`, `isCrowded`; snow on the roofs through `--snow`) |
+| 3D | `src/map/christmas3d.ts` (`createChristmasTree`, `createPine`, `createSnowman`, `createWreath`, `addLightString` (garland, bows and lights), `createSanta`, `createSleigh`, `festiveMaterials`, `lightBulbs`: bulbs are unlit materials dimmed nearly dark and back, so the twinkle shows in daylight); in `scene3d.ts` section "Christmas" (`setSeason` rebuilds the town, `addChristmasTree`, `animateChristmas`, which also draws the sleigh's sparkle trail from its path), and `addTree`, `addOffice`, `addWfh`, `addOff`, `addLampPost` |
+| Festive snowfall (both maps) | `festive` in `src/map/WeatherOverlay.tsx` (`FESTIVE_SNOW`) |
+| The tree in the park's gap, and any pine the big tree's branches would reach, make way for the big tree | `parkTrees(park, { festive })` in `src/lib/parkTrees.ts`, using `christmasTreeReach` and `christmasTreeScale3d` (the 3D tree's size) in `season.ts` |
+| How to add or change a seasonal look | `.claude/skills/seasonal-theme/SKILL.md` |
+
 ### Random member picker (claw machine)
 | Feature | Code |
 |---|---|

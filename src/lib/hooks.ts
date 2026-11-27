@@ -9,6 +9,7 @@ import { ambience, DAY, defaultSun, PREVIEW_WEATHER, previewTime, type Ambience,
 import { subscribe } from './api.ts';
 import { withCelebration } from './celebrateLook.ts';
 import { replaceSavedMember, type MemberUpdates } from './memberUpdates.ts';
+import { previewSeason, seasonOn, type Season } from './season.ts';
 import { withFund } from './fundLook.ts';
 
 /**
@@ -141,4 +142,15 @@ export function useAmbience(weather: Weather | null, enabled = true): Ambience {
     const time = previewTime(preview.time, sun, at);
     return ambience({ isDay: shown?.isDay ?? true, ...shown, sun }, time ?? at);
   }, [weather, enabled, preview, minute]);
+}
+
+/**
+ * The town's seasonal look today (lib/season.ts), checked every minute so it changes at
+ * midnight. Preview on this screen only: `?season=christmas` or `?season=none`.
+ */
+export function useSeason(): Season {
+  const [preview] = useState(() => previewSeason(new URLSearchParams(location.search).get('season')));
+  const now = useNow(60_000);
+  const day = now.toDateString();
+  return useMemo(() => preview ?? seasonOn(new Date(day)), [preview, day]);
 }

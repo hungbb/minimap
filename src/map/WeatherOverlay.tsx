@@ -1,4 +1,5 @@
-// Foreground weather for both map modes: clouds, fog, rain or snow, and soft lightning.
+// Foreground weather for both map modes: clouds, fog, rain or snow, and soft lightning,
+// and a few festive snowflakes at Christmas.
 // Pointer events pass through to the map, while its toolbars and dialogs stay above this layer.
 import { useEffect, useRef, type CSSProperties } from 'react';
 import styled, { keyframes } from 'styled-components';
@@ -227,7 +228,11 @@ function Clouds({ look, reduced }: { look: Ambience; reduced: boolean }) {
   );
 }
 
-export function WeatherOverlay({ look, reduced }: { look: Ambience; reduced: boolean }) {
+/** How heavily festive snow falls at Christmas when the weather itself is dry: a few slow flakes. */
+const FESTIVE_SNOW = 0.14;
+
+/** `festive`: at Christmas (lib/season.ts) a few flakes fall even when the weather is dry. */
+export function WeatherOverlay({ look, reduced, festive = false }: { look: Ambience; reduced: boolean; festive?: boolean }) {
   const { weather, daylight } = look;
   const night = 1 - daylight;
   const fogColour = mixColor('#e8edf3', '#5a6290', night);
@@ -238,6 +243,9 @@ export function WeatherOverlay({ look, reduced }: { look: Ambience; reduced: boo
       {weather.fog > 0 && <Fog style={{ opacity: weather.fog * 0.8 }} />}
       {weather.precipitation !== 'none' && (
         <Precipitation kind={weather.precipitation} intensity={weather.intensity} wind={weather.wind} night={night} still={reduced} />
+      )}
+      {weather.precipitation === 'none' && festive && (
+        <Precipitation kind="snow" intensity={FESTIVE_SNOW} wind={weather.wind} night={night} still={reduced} />
       )}
       {weather.storm && <Lightning />}
     </Layer>

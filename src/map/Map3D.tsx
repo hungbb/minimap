@@ -18,6 +18,8 @@ import { ArcadePlay } from './ArcadeCabinet.tsx';
 import { NoticeBoardLink } from './NoticeBoard2D.tsx';
 import { hasWeather, WeatherOverlay } from './WeatherOverlay.tsx';
 import { MAP_LAYERS } from './layers.ts';
+import { isFestive } from '../lib/season.ts';
+import { Holly } from './Christmas2D.tsx';
 
 const View = styled.div<{ $namesOff: boolean }>`
   isolation: isolate;
@@ -60,6 +62,7 @@ const PetName = styled.button`
 `;
 
 const ZoneLabel = styled.div`
+  position: relative;
   padding: 0 10px;
   border: ${theme.line};
   border-radius: 12px;
@@ -213,6 +216,7 @@ export default function Map3D({
   onPicker,
   onAssemble,
   look,
+  season,
   votes,
   leaders,
   voteMarks,
@@ -279,6 +283,11 @@ export default function Map3D({
     };
   }, []);
 
+  // Before the first update, so the town is first built in its seasonal look.
+  useEffect(() => {
+    sceneRef.current?.setSeason(season);
+  }, [season]);
+
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -336,7 +345,7 @@ export default function Map3D({
       style={{ '--sky-top': look.sky.top, '--sky-bottom': look.sky.bottom } as CSSProperties}
     >
       <SceneStage ref={stageRef} />
-      {hasWeather(look) && <WeatherOverlay look={look} reduced={reduced} />}
+      {(hasWeather(look) || isFestive(season)) && <WeatherOverlay look={look} reduced={reduced} festive={isFestive(season)} />}
 
       <CameraBar>
         {camera.presets.map((preset) => (
@@ -418,6 +427,7 @@ export default function Map3D({
           <ZoneLabel style={attendance.unlocked && officeIds.has(zone.id) && zone.count>0 ? {background:'#fff0bf',borderColor:'#bd913c'} : undefined}>
             <span>{zone.name}</span>
             <ZoneLabelCount>{zone.count}</ZoneLabelCount>
+            {isFestive(season) && <Holly />}
             {attendance.unlocked && officeIds.has(zone.id) && zone.count>0 && <AssemblePlay data-assemble-play aria-label={`Assemble team from ${zone.name}`} aria-haspopup="dialog" style={{marginLeft:8}} onClick={event=>onAssemble(event.currentTarget)}>✦ Assemble</AssemblePlay>}
           </ZoneLabel>,
           zone.element,
